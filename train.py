@@ -1,12 +1,12 @@
 # stdlib
-from argparse import ArgumentParser
 import os
+from argparse import ArgumentParser
 
 # third party
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import TensorBoardLogger
-from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 import torch
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
+from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 
 # first party
 import datamodules
@@ -44,12 +44,18 @@ def main(args):
         ],
         deterministic=True,
         devices="auto",
-        logger=TensorBoardLogger(
-            "logs",
-            name=args.model_name,
-            default_hp_metric=False,
-            # log_graph=True,
-        ),
+        logger=[
+            TensorBoardLogger(
+                "logs",
+                name=args.model_name,
+                default_hp_metric=False,
+                # log_graph=True,
+            ),
+            WandbLogger(
+                project="mscai-dl2",
+                log_model=True,
+            ),
+        ],
     )
 
     trainer.fit(model, datamodule=datamodule)
