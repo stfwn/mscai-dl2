@@ -4,9 +4,10 @@ from argparse import ArgumentParser
 
 # third party
 import pytorch_lightning as pl
-import torch
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
+from pytorch_lightning.utilities import seed
+import torch
 
 # first party
 import datamodules
@@ -14,6 +15,7 @@ import models
 
 
 def main(args):
+    seed.seed_everything(420)
     datamodule = datamodules.FashionMNISTDataModule(
         data_dir="./data", num_workers=os.cpu_count()
     )
