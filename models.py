@@ -1,5 +1,6 @@
 from typing import Literal, Optional, Type
 
+from pyro.nn import PyroModule
 from pytorch_lightning import LightningModule
 import torch
 from torch import nn, optim
@@ -7,6 +8,17 @@ import torch.nn.functional as F
 import torchmetrics
 
 from loss_functions import PonderLoss
+
+#Bayesian imports
+import numpy as np
+import torch
+from torch.distributions import constraints
+import pyro
+import pyro.infer
+import pyro.optim
+import pyro.distributions as dist
+from pyro.nn import PyroModule, PyroSample
+
 
 
 class PonderNet(LightningModule):
@@ -161,7 +173,6 @@ class PonderNet(LightningModule):
         self.log("acc/test", self.test_acc, on_step=False, on_epoch=True)
         return loss
 
-
 class PonderMLP(nn.Module):
     def __init__(
         self,
@@ -247,3 +258,158 @@ class PonderMLP(nn.Module):
             torch.stack(p),  # (step, batch)
             halted_at.long(),  # (batch)
         )
+
+class PonderBayesian(PyroModule):
+    def __init__(
+        self,
+        in_dim: int,
+        hidden_dims: list[int],
+        out_dim: int,
+        state_dim: int,
+        max_ponder_steps: int,
+        ponder_epsilon: float,
+        allow_early_return: bool = True,
+    ):
+        """
+        Args:
+            allow_early_return: Allow returning once all the halting variables
+                from the batch landed on halt. Set this to `False` if your
+                preds reduction method requires preds from all steps.
+        """
+        super().__init__()
+        self.in_dim = in_dim
+        self.hidden_dims = hidden_dims
+        self.out_dim = out_dim
+        self.state_dim = state_dim
+        self.max_ponder_steps = max_ponder_steps
+        self.ponder_epsilon = ponder_epsilon
+        self.allow_early_return = allow_early_return
+
+        total_out_dim = out_dim + state_dim + 2 #add two extra items for dimension for alpha and beta
+        if hidden_dims:
+            layers: list[nn.Module] = [nn.Linear(in_dim + state_dim, hidden_dims[0])]
+            for in_, out in zip(hidden_dims[:-1], hidden_dims[1:]):
+                layers += [nn.ReLU(), nn.Linear(in_, out)]
+            layers += [nn.ReLU(), nn.Linear(hidden_dims[-1], total_out_dim)]
+            self.layers = nn.Sequential(*layers)
+        else:
+            self.layers = nn.Sequential(nn.Linear(in_dim + state_dim, total_out_dim))
+
+    def forward(self, x):
+        batch_size = x.size(0)
+        x = x.view(batch_size, -1)
+
+        # State that transfers across steps
+        state = x.new_zeros(batch_size, self.state_dim)
+
+        # Probabilities of not having halted so far.
+        p = []  # Probabilities of halting at each step.
+        cum_p_n = x.new_zeros(batch_size)  # Cumulative probability of halting.
+        prob_not_halted_so_far = 1
+        halted_at = x.new_zeros(batch_size)
+        y_hat = []
+
+        for n in range(self.max_ponder_steps):
+            # 1) Pass through model
+            y_hat_n, state, lambda_params = self.layers(
+                torch.concat((x, state), dim=1)
+            ).tensor_split(
+                indices=(
+                    self.out_dim,
+                    self.out_dim + self.state_dim,
+                ),
+                dim=1,
+            )
+
+            # 2) Sample lambda_n from beta-distribution
+            sigmoid = torch.nn.Sigmoid()
+            lambda_params = sigmoid(lambda_params)
+            alpha, beta = lambda_params[:,0], lambda_params[:,1]
+            with pyro.plate("data", batch_size):
+                lambda_n = pyro.sample("lambda", dist.Beta(alpha,beta))
+
+            # 3) Store y_hat and probabilities
+            y_hat.append(y_hat_n)
+            p.append(prob_not_halted_so_far * lambda_n)
+            prob_not_halted_so_far = prob_not_halted_so_far * (1 - lambda_n)
+            cum_p_n += p[n]
+
+            # # 4) Update halted_at where needed (one-liner courtesy of jankrepl on GitHub)
+            # halted_at = (n * (halted_at == 0) * lambda_n.bernoulli()).max(halted_at)
+            #
+            # # If the probability is over epsilon we always stop.
+            # halted_at[cum_p_n > (1 - self.ponder_epsilon)] = n
+            #
+            # if self.allow_early_return and halted_at.all():
+            #     break
+
+        # # Last step should be used if halting prob never reached above 1-epsilon
+        # halted_at[halted_at == 0] = self.max_ponder_steps - 1
+        # p_ = [float(p_step[0]) for p_step in p]
+        # print('p',p_, sum(p_))
+
+        #sampling halted at (i.e. dn)
+        p = torch.stack(p)  # (step, batch)
+        with pyro.plate("data", batch_size):
+            halted_at = pyro.sample("lambda", dist.Categorical(p.permute(1,0)))
+
+        return (
+            torch.stack(y_hat),  # (step, batch, logit)
+            p,  # (step, batch)
+            halted_at.long(),  # (batch)
+        )
+
+
+model = PonderBayesian(
+        in_dim = 10,
+        hidden_dims = [300, 200],
+        out_dim = 4,
+        state_dim = 100,
+        max_ponder_steps=10,
+        ponder_epsilon = 0.05)
+
+toy_x = torch.rand((50,10))
+toy_y = torch.rand((50,4))
+
+pred, p, halted = model.forward(toy_x)
+
+print(pred)
+
+
+
+
+
+# prior = dist.Beta(10, 10)
+
+# def guide(params):
+#     # returns the Bernoulli probablility
+#     alpha = pyro.param(
+#         "alpha", torch.tensor(params[0]), constraint=constraints.positive
+#     )
+#     beta = pyro.param(
+#         "beta", torch.tensor(params[1]), constraint=constraints.positive
+#     )
+#     return pyro.sample("beta_dist", dist.Beta(alpha, beta))
+#
+
+# svi = pyro.infer.SVI(
+#     model=conditioned_data_model,
+#     guide=guide,
+#     optim=pyro.optim.SGD({"lr": 0.001, "momentum": 0.8}),
+#     loss=pyro.infer.Trace_ELBO(),
+# )
+#
+# params_prior = [prior.concentration1, prior.concentration0]
+#
+# # Iterate over all the data and store results
+# losses, alpha, beta = [], [], []
+# pyro.clear_param_store()
+#
+# num_steps = 3000
+# for t in range(num_steps):
+#     losses.append(svi.step(params_prior))
+#     alpha.append(pyro.param("alpha").item())
+#     beta.append(pyro.param("beta").item())
+#
+# posterior_vi = dist.Beta(alpha[-1], beta[-1])
+
