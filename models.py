@@ -3,25 +3,30 @@ from typing import Literal, Optional, Type
 import matplotlib.pyplot as plt
 
 import tqdm
-from pyro import poutine
-from pyro.nn import PyroModule
+# from pyro import poutine
+# from pyro.nn import PyroModule
 from pytorch_lightning import LightningModule
 import torch
 from torch import nn, optim
 import torch.nn.functional as F
 import torchmetrics
 
-from loss_functions import PonderLoss
+from loss_functions import *
 
-#Bayesian imports
-import numpy as np
-import torch
-from torch.distributions import constraints
-import pyro
-import pyro.infer
-import pyro.optim
-import pyro.distributions as dist
-from pyro.nn import PyroModule, PyroSample
+import torch.distributions.beta as dist_beta
+# #Bayesian imports
+# import numpy as np
+# import torch
+# from torch.distributions import constraints
+# import pyro
+# import pyro.infer
+# import pyro.optim
+# import pyro.distributions as dist
+# from pyro.nn import PyroModule, PyroSample
+
+
+
+
 
 class PonderNet(LightningModule):
     def __init__(
@@ -87,8 +92,14 @@ class PonderNet(LightningModule):
                     beta=loss_beta,
                     lambda_prior=lambda_prior,
                     max_ponder_steps=max_ponder_steps,
+                )),
+            "bayesian_classification": (
+                lambda: PonderBayesianLoss(
+                    task_loss_fn=F.cross_entropy,
+                    beta_prior=(10, 10),
+                    max_ponder_steps=max_ponder_steps,
                 )
-            )
+        )
         }.get(task)
         if not lf_class:
             raise NotImplementedError(f"Unknown task: '{task}'")
@@ -150,8 +161,8 @@ class PonderNet(LightningModule):
 
     def training_step(self, batch, batch_idx):
         x, targets = batch
-        preds, p, halted_at = self(x)
-        loss = self.loss_function(preds, p, halted_at, targets)
+        preds, p, lambdas, halted_at = self(x)
+        loss = self.loss_function(preds, p, lambdas, halted_at, targets)
         self.train_acc(self.reduce_preds(preds, halted_at), targets)
         self.log("loss/train", loss)
         self.log("acc/train", self.train_acc, on_step=False, on_epoch=True)
@@ -159,8 +170,8 @@ class PonderNet(LightningModule):
 
     def validation_step(self, batch, batch_idx):
         x, targets = batch
-        preds, p, halted_at = self(x)
-        loss = self.loss_function(preds, p, halted_at, targets)
+        preds, p, lambdas, halted_at = self(x)
+        loss = self.loss_function(preds, p, lambdas, halted_at, targets)
         self.val_acc(self.reduce_preds(preds, halted_at), targets)
         self.log("loss/val", loss)
         self.log("acc/val", self.val_acc, on_step=False, on_epoch=True)
@@ -168,8 +179,8 @@ class PonderNet(LightningModule):
 
     def test_step(self, batch, batch_idx):
         x, targets = batch
-        preds, p, halted_at = self(x)
-        loss = self.loss_function(preds, p, halted_at, targets)
+        preds, p, lambdas, halted_at = self(x)
+        loss = self.loss_function(preds, p, lambdas, halted_at, targets)
         self.test_acc(self.reduce_preds(preds, halted_at), targets)
         self.log("loss/test", loss)
         self.log("acc/test", self.test_acc, on_step=False, on_epoch=True)
@@ -261,7 +272,7 @@ class PonderMLP(nn.Module):
             halted_at.long(),  # (batch)
         )
 
-class PonderBayesian(PyroModule):
+class PonderBayesian(nn.Module):
     def __init__(
         self,
         in_dim: int,
@@ -297,7 +308,7 @@ class PonderBayesian(PyroModule):
         else:
             self.layers = nn.Sequential(nn.Linear(in_dim + state_dim, total_out_dim))
 
-    def forward(self, x, y=None, prior_params=None, pyro_training=True):
+    def forward(self, x):
         """
         Turn off pyro_training during normal inference.
 
@@ -309,6 +320,7 @@ class PonderBayesian(PyroModule):
         state = x.new_zeros(batch_size, self.state_dim)
 
         # Probabilities of not having halted so far.
+        lambdas = []
         p = []  # Probabilities of halting at each step.
         cum_p_n = x.new_zeros(batch_size)  # Cumulative probability of halting.
         prob_not_halted_so_far = 1
@@ -329,22 +341,29 @@ class PonderBayesian(PyroModule):
 
             # 2) Sample lambda_n from beta-distribution
             lambda_params = F.relu(lambda_params) + 1e-7
+            # print(lambda_params)
             alpha, beta = lambda_params[:,0], lambda_params[:,1]
-            with pyro.plate(f"data_{n}", batch_size):
-                lambda_n = pyro.sample(f"lambda_{n}", dist.Beta(alpha,beta))
+
+            distribution = dist_beta.Beta(alpha, beta)
+            lambda_n = distribution.rsample()
+            # print('lambda:', lambda_n)
+
+            # with pyro.plate(f"data_{n}", batch_size):
+            #     lambda_n = pyro.sample(f"lambda_{n}", dist.Beta(alpha,beta))
 
             # 3) Store y_hat and probabilities
             y_hat.append(y_hat_n)
+            lambdas.append(lambda_n)
             p.append(prob_not_halted_so_far * lambda_n)
             prob_not_halted_so_far = prob_not_halted_so_far * (1 - lambda_n)
             cum_p_n += p[n]
 
-            # # 4) Update halted_at where needed (one-liner courtesy of jankrepl on GitHub)
-            # halted_at = (n * (halted_at == 0) * lambda_n.bernoulli()).max(halted_at)
-            #
-            # # If the probability is over epsilon we always stop.
-            # halted_at[cum_p_n > (1 - self.ponder_epsilon)] = n
-            #
+            # 4) Update halted_at where needed (one-liner courtesy of jankrepl on GitHub)
+            halted_at = (n * (halted_at == 0) * lambda_n.bernoulli()).max(halted_at)
+
+            # If the probability is over epsilon we always stop.
+            halted_at[cum_p_n > (1 - self.ponder_epsilon)] = n
+
             # if self.allow_early_return and halted_at.all():
             #     break
 
@@ -354,12 +373,13 @@ class PonderBayesian(PyroModule):
         # print('p',p_, sum(p_))
 
         #sampling halted at (i.e. dn)
+        lambdas_stacked = torch.stack(lambdas)
         p_stacked = torch.stack(p)  # (step, batch)
         y_hat_stacked = torch.stack(y_hat)  # (step, batch, logit)
 
-        if pyro_training:
-            # Compute the posterior predictive
-            return torch.sum(p_stacked.unsqueeze(-1) * y_hat_stacked, dim=0)  # (batch, num_labels)
+        # if pyro_training:
+        #     # Compute the posterior predictive
+        #     return torch.sum(p_stacked.unsqueeze(-1) * y_hat_stacked, dim=0)  # (batch, num_labels)
 
         # with pyro.plate("data", batch_size):
         #     halted_at = pyro.sample("lambda", dist.Categorical(p_stacked.permute(1,0)))
@@ -367,6 +387,7 @@ class PonderBayesian(PyroModule):
         return (
             y_hat_stacked,  # (step, batch, logit)
             p_stacked,  # (step, batch)
+            lambdas_stacked, # (step, batch)
             halted_at.long(),  # (batch)
         )
 
@@ -379,65 +400,69 @@ model = PonderBayesian(
         max_ponder_steps=max_ponder_steps,
         ponder_epsilon = 0.05)
 
-toy_x = torch.rand((50,10))
-toy_y = torch.rand((50,4))
+if __name__ == "__main__":
+    toy_x = torch.rand((6,10))
+    toy_y = torch.rand((6,4))
+    pred, p, lambdas, halted_at = model.forward(toy_x)
+    print(pred,p, halted_at)
 
-predictive_posterior = model.forward(toy_x, pyro_training=True)
 
-# From: https://www.richard-stanton.com/2020/05/03/fit-dist-with-pyro_2.html
-def guide(x, y, params):
-    # returns the Bernoulli probablility
-    alpha = pyro.param(
-        "alpha", torch.tensor(params[0]), constraint=constraints.positive
-    )
-    beta = pyro.param(
-        "beta", torch.tensor(params[1]), constraint=constraints.positive
-    )
 
-    for n in range(max_ponder_steps):
-        with pyro.plate(f"data_{n}", 50):
-            pyro.sample(f"lambda_{n}", dist.Beta(alpha + 1e-7, beta + 1e-7))
 
-# note that simple_elbo takes a model, a guide, and their respective arguments as inputs
-def simple_elbo(model, guide, *args, **kwargs):
-    # run the guide and trace its execution
-    guide_trace = poutine.trace(guide).get_trace(*args, **kwargs)
-
-    # run the model and replay it against the samples from the guide
-    model_trace = poutine.trace(
-        poutine.replay(model, trace=guide_trace)).get_trace(*args, **kwargs)
-
-    # construct the elbo loss function
-    return -1*(model_trace.log_prob_sum() - guide_trace.log_prob_sum())
-
-svi = pyro.infer.SVI(
-    model=model,
-    guide=guide,
-    optim=pyro.optim.SGD({"lr": 0.001, "momentum": 0.8}),
-    loss=pyro.infer.Trace_ELBO(),
-)
-
-prior = dist.Beta(10, 10)  # Jeroen is very sure that this prior is domain expert certified
-
-params_prior = [prior.concentration1, prior.concentration0]
-
-# Iterate over all the data and store results
-losses, alpha, beta = [], [], []
-pyro.clear_param_store()
-
-num_steps = 500
-for t in tqdm.tqdm(range(num_steps)):
-    losses.append(svi.step(toy_x, toy_y, params_prior))
-    alpha.append(pyro.param("alpha").item())
-    beta.append(pyro.param("beta").item())
-
-posterior_vi = dist.Beta(alpha[-1], beta[-1])
-
-plt.figure(num=None, figsize=(10, 6), dpi=80)
-plt.plot(alpha, label='alpha')
-plt.plot(beta, label='beta')
-plt.title("Parameter trajectories")
-plt.xlabel("Iteration")
-plt.legend()
-#plt.savefig("images/beta_trajectories.png")
-plt.show()
+# # From: https://www.richard-stanton.com/2020/05/03/fit-dist-with-pyro_2.html
+# def guide(x, y, params):
+#     # returns the Bernoulli probablility
+#     alpha = pyro.param(
+#         "alpha", torch.tensor(params[0]), constraint=constraints.positive
+#     )
+#     beta = pyro.param(
+#         "beta", torch.tensor(params[1]), constraint=constraints.positive
+#     )
+#
+#     for n in range(max_ponder_steps):
+#         with pyro.plate(f"data_{n}", 50):
+#             pyro.sample(f"lambda_{n}", dist.Beta(alpha + 1e-7, beta + 1e-7))
+#
+# # note that simple_elbo takes a model, a guide, and their respective arguments as inputs
+# def simple_elbo(model, guide, *args, **kwargs):
+#     # run the guide and trace its execution
+#     guide_trace = poutine.trace(guide).get_trace(*args, **kwargs)
+#
+#     # run the model and replay it against the samples from the guide
+#     model_trace = poutine.trace(
+#         poutine.replay(model, trace=guide_trace)).get_trace(*args, **kwargs)
+#
+#     # construct the elbo loss function
+#     return -1*(model_trace.log_prob_sum() - guide_trace.log_prob_sum())
+#
+# svi = pyro.infer.SVI(
+#     model=model,
+#     guide=guide,
+#     optim=pyro.optim.SGD({"lr": 0.001, "momentum": 0.8}),
+#     loss=pyro.infer.Trace_ELBO(),
+# )
+#
+# prior = dist.Beta(10, 10)  # Jeroen is very sure that this prior is domain expert certified
+#
+# params_prior = [prior.concentration1, prior.concentration0]
+#
+# # Iterate over all the data and store results
+# losses, alpha, beta = [], [], []
+# pyro.clear_param_store()
+#
+# num_steps = 500
+# for t in tqdm.tqdm(range(num_steps)):
+#     losses.append(svi.step(toy_x, toy_y, params_prior))
+#     alpha.append(pyro.param("alpha").item())
+#     beta.append(pyro.param("beta").item())
+#
+# posterior_vi = dist.Beta(alpha[-1], beta[-1])
+#
+# plt.figure(num=None, figsize=(10, 6), dpi=80)
+# plt.plot(alpha, label='alpha')
+# plt.plot(beta, label='beta')
+# plt.title("Parameter trajectories")
+# plt.xlabel("Iteration")
+# plt.legend()
+# #plt.savefig("images/beta_trajectories.png")
+# plt.show()
