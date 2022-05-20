@@ -55,10 +55,10 @@ def main(args):
                 default_hp_metric=False,
                 # log_graph=True,
             ),
-            # WandbLogger(
-            #     project="mscai-dl2",
-            #     log_model=True,
-            # ),
+            WandbLogger(
+                project="mscai-dl2",
+                log_model=True,
+            ),
         ],
     )
 
