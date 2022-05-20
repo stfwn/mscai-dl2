@@ -29,7 +29,7 @@ class PonderLoss(nn.Module):
         prior = lambda_prior * (1 - lambda_prior) ** torch.arange(max_ponder_steps)
         self.register_buffer("prior", prior)
 
-    def forward(self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor):
+    def forward(self, out_dict: dict, targets: Tensor):
         """
         Args:
             `preds`: Predictions of shape (ponder_steps, batch_size, logits)
@@ -40,6 +40,8 @@ class PonderLoss(nn.Module):
             `targets`: Targets of shape (batch_size)
 
         """
+        preds, p = out_dict["y_hat"], out_dict["p"]
+
         n_steps, batch_size, _ = preds.shape
 
         # Reconstruction term
@@ -68,6 +70,7 @@ class PonderBayesianLoss(nn.Module):
         task_loss_fn: Callable,
         beta_prior: tuple,
         max_ponder_steps: int,
+        scale_reg: float
     ):
         """
         Args:
@@ -78,13 +81,13 @@ class PonderBayesianLoss(nn.Module):
         """
         super().__init__()
         self.task_loss_fn = task_loss_fn
-        # self.beta = beta
         self.beta_prior = beta_prior
-        self.KL = nn.KLDivLoss(reduction="batchmean")
+        self.KL = nn.KLDivLoss(reduction="none")
+        self.scale_reg = scale_reg
 
         self.prior = dist_beta.Beta(beta_prior[0], beta_prior[1])
 
-    def forward(self, preds: Tensor, p: Tensor, lambdas: Tensor, halted_at: Tensor, targets: Tensor):
+    def forward(self, out_dict: dict, targets: Tensor):
         """
         Args:
             `preds`: Predictions of shape (ponder_steps, batch_size, logits)
@@ -95,6 +98,8 @@ class PonderBayesianLoss(nn.Module):
             `targets`: Targets of shape (batch_size)
 
         """
+        preds, p, lambdas = out_dict["y_hat"], out_dict["p"], out_dict["lambdas"]
+
         n_steps, batch_size, _ = preds.shape
 
         # Reconstruction term
@@ -112,7 +117,7 @@ class PonderBayesianLoss(nn.Module):
         # Regularization term
         l_reg = self.KL(
             lambdas.transpose(1, 0).log(),
-            self.prior.rsample(sample_shape=(batch_size, n_steps)),  # type: ignore
-        )
+            self.prior.rsample(sample_shape=(batch_size, n_steps)).to(lambdas.device),  # type: ignore
+        ).sum(1).mean()  # Sum over the number of steps, then mean over the batch.
 
-        return l_rec + l_reg
+        return l_rec + self.scale_reg * l_reg

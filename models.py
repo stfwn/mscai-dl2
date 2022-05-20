@@ -1,10 +1,5 @@
 from typing import Literal, Optional, Type
 
-import matplotlib.pyplot as plt
-
-import tqdm
-# from pyro import poutine
-# from pyro.nn import PyroModule
 from pytorch_lightning import LightningModule
 import torch
 from torch import nn, optim
@@ -13,36 +8,24 @@ import torchmetrics
 
 from loss_functions import *
 
-import torch.distributions.beta as dist_beta
 # #Bayesian imports
-# import numpy as np
-# import torch
-# from torch.distributions import constraints
-# import pyro
-# import pyro.infer
-# import pyro.optim
-# import pyro.distributions as dist
-# from pyro.nn import PyroModule, PyroSample
-
-
-
-
+import torch.distributions.beta as dist_beta
 
 class PonderNet(LightningModule):
     def __init__(
-        self,
-        step_function: Literal["mlp"],
-        step_function_args: dict,
-        encoding_dim: int,
-        out_dim: int,
-        task: str,
-        max_ponder_steps: int,
-        preds_reduction_method: Literal["ponder", "bayesian"] = "ponder",
-        encoder: Optional[str] = None,
-        encoder_args: Optional[dict] = None,
-        learning_rate: float = 3e-4,
-        lambda_prior: float = 0.2,
-        loss_beta: float = 0.01,
+            self,
+            step_function: Literal["mlp"],
+            step_function_args: dict,
+            encoding_dim: int,
+            out_dim: int,
+            task: str,
+            max_ponder_steps: int,
+            preds_reduction_method: Literal["ponder", "bayesian"] = "ponder",
+            encoder: Optional[str] = None,
+            encoder_args: Optional[dict] = None,
+            learning_rate: float = 3e-4,
+            lambda_prior: float = 0.2,
+            loss_beta: float = 0.01,
     ):
         """
         Args:
@@ -99,8 +82,9 @@ class PonderNet(LightningModule):
                     task_loss_fn=F.cross_entropy,
                     beta_prior=(10, 10),
                     max_ponder_steps=max_ponder_steps,
+                    scale_reg=loss_beta
                 )
-        )
+            )
         }.get(task)
         if not lf_class:
             raise NotImplementedError(f"Unknown task: '{task}'")
@@ -166,7 +150,10 @@ class PonderNet(LightningModule):
         loss = self.loss_function(preds, p, lambdas, halted_at, targets)
         self.train_acc(self.reduce_preds(preds, halted_at), targets)
         self.log("loss/train", loss)
-        self.log("acc/train", self.train_acc, on_step=False, on_epoch=True)
+        self.log("acc/train", self.train_acc, on_step=True, on_epoch=True)
+        self.log("lambda/first", out_dict["lambdas"][0, :].mean(), on_step=True, on_epoch=True)
+        self.log("lambda/last", out_dict["lambdas"][-1, :].mean(), on_step=True, on_epoch=True)
+
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -175,7 +162,7 @@ class PonderNet(LightningModule):
         loss = self.loss_function(preds, p, lambdas, halted_at, targets)
         self.val_acc(self.reduce_preds(preds, halted_at), targets)
         self.log("loss/val", loss)
-        self.log("acc/val", self.val_acc, on_step=False, on_epoch=True)
+        self.log("acc/val", self.val_acc, on_step=True, on_epoch=True)
         return loss
 
     def test_step(self, batch, batch_idx):
@@ -187,16 +174,17 @@ class PonderNet(LightningModule):
         self.log("acc/test", self.test_acc, on_step=False, on_epoch=True)
         return loss
 
+
 class PonderMLP(nn.Module):
     def __init__(
-        self,
-        in_dim: int,
-        hidden_dims: list[int],
-        out_dim: int,
-        state_dim: int,
-        max_ponder_steps: int,
-        ponder_epsilon: float,
-        allow_early_return: bool = True,
+            self,
+            in_dim: int,
+            hidden_dims: list[int],
+            out_dim: int,
+            state_dim: int,
+            max_ponder_steps: int,
+            ponder_epsilon: float,
+            allow_early_return: bool = True,
     ):
         """
         Args:
@@ -273,16 +261,17 @@ class PonderMLP(nn.Module):
             halted_at.long(),  # (batch)
         )
 
+
 class PonderBayesianMLP(nn.Module):
     def __init__(
-        self,
-        in_dim: int,
-        hidden_dims: list[int],
-        out_dim: int,
-        state_dim: int,
-        max_ponder_steps: int,
-        ponder_epsilon: float,
-        allow_early_return: bool = True,
+            self,
+            in_dim: int,
+            hidden_dims: list[int],
+            out_dim: int,
+            state_dim: int,
+            max_ponder_steps: int,
+            ponder_epsilon: float,
+            allow_early_return: bool = True,
     ):
         """
         Args:
@@ -299,7 +288,7 @@ class PonderBayesianMLP(nn.Module):
         self.ponder_epsilon = ponder_epsilon
         self.allow_early_return = allow_early_return
 
-        total_out_dim = out_dim + state_dim + 2 #add two extra items for dimension for alpha and beta
+        total_out_dim = out_dim + state_dim + 2  # add two extra items for dimension for alpha and beta
         if hidden_dims:
             layers: list[nn.Module] = [nn.Linear(in_dim + state_dim, hidden_dims[0])]
             for in_, out in zip(hidden_dims[:-1], hidden_dims[1:]):
@@ -343,7 +332,7 @@ class PonderBayesianMLP(nn.Module):
             # 2) Sample lambda_n from beta-distribution
             lambda_params = F.relu(lambda_params) + 1e-7
             # print(lambda_params)
-            alpha, beta = lambda_params[:,0], lambda_params[:,1]
+            alpha, beta = lambda_params[:, 0], lambda_params[:, 1]
 
             distribution = dist_beta.Beta(alpha, beta)
             lambda_n = distribution.rsample()
@@ -373,7 +362,7 @@ class PonderBayesianMLP(nn.Module):
         # p_ = [float(p_step[0]) for p_step in p]
         # print('p',p_, sum(p_))
 
-        #sampling halted at (i.e. dn)
+        # sampling halted at (i.e. dn)
         lambdas_stacked = torch.stack(lambdas)
         p_stacked = torch.stack(p)  # (step, batch)
         y_hat_stacked = torch.stack(y_hat)  # (step, batch, logit)
@@ -385,13 +374,12 @@ class PonderBayesianMLP(nn.Module):
         # with pyro.plate("data", batch_size):
         #     halted_at = pyro.sample("lambda", dist.Categorical(p_stacked.permute(1,0)))
 
-        return (
-            y_hat_stacked,  # (step, batch, logit)
-            p_stacked,  # (step, batch)
-            lambdas_stacked, # (step, batch)
-            halted_at.long(),  # (batch)
-        )
-
+        return {
+            "y_hat": y_hat_stacked,  # (step, batch, logit)
+            "p": p_stacked,  # (step, batch)
+            "lambdas": lambdas_stacked,  # (step, batch)
+            "halted_at": halted_at.long(),  # (batch)
+        }
 
 
 if __name__ == "__main__":
@@ -404,68 +392,7 @@ if __name__ == "__main__":
         max_ponder_steps=max_ponder_steps,
         ponder_epsilon=0.05)
 
-    toy_x = torch.rand((6,10))
-    toy_y = torch.rand((6,4))
+    toy_x = torch.rand((6, 10))
+    toy_y = torch.rand((6, 4))
     pred, p, lambdas, halted_at = model.forward(toy_x)
-    print(pred,p, halted_at)
-
-
-
-
-# # From: https://www.richard-stanton.com/2020/05/03/fit-dist-with-pyro_2.html
-# def guide(x, y, params):
-#     # returns the Bernoulli probablility
-#     alpha = pyro.param(
-#         "alpha", torch.tensor(params[0]), constraint=constraints.positive
-#     )
-#     beta = pyro.param(
-#         "beta", torch.tensor(params[1]), constraint=constraints.positive
-#     )
-#
-#     for n in range(max_ponder_steps):
-#         with pyro.plate(f"data_{n}", 50):
-#             pyro.sample(f"lambda_{n}", dist.Beta(alpha + 1e-7, beta + 1e-7))
-#
-# # note that simple_elbo takes a model, a guide, and their respective arguments as inputs
-# def simple_elbo(model, guide, *args, **kwargs):
-#     # run the guide and trace its execution
-#     guide_trace = poutine.trace(guide).get_trace(*args, **kwargs)
-#
-#     # run the model and replay it against the samples from the guide
-#     model_trace = poutine.trace(
-#         poutine.replay(model, trace=guide_trace)).get_trace(*args, **kwargs)
-#
-#     # construct the elbo loss function
-#     return -1*(model_trace.log_prob_sum() - guide_trace.log_prob_sum())
-#
-# svi = pyro.infer.SVI(
-#     model=model,
-#     guide=guide,
-#     optim=pyro.optim.SGD({"lr": 0.001, "momentum": 0.8}),
-#     loss=pyro.infer.Trace_ELBO(),
-# )
-#
-# prior = dist.Beta(10, 10)  # Jeroen is very sure that this prior is domain expert certified
-#
-# params_prior = [prior.concentration1, prior.concentration0]
-#
-# # Iterate over all the data and store results
-# losses, alpha, beta = [], [], []
-# pyro.clear_param_store()
-#
-# num_steps = 500
-# for t in tqdm.tqdm(range(num_steps)):
-#     losses.append(svi.step(toy_x, toy_y, params_prior))
-#     alpha.append(pyro.param("alpha").item())
-#     beta.append(pyro.param("beta").item())
-#
-# posterior_vi = dist.Beta(alpha[-1], beta[-1])
-#
-# plt.figure(num=None, figsize=(10, 6), dpi=80)
-# plt.plot(alpha, label='alpha')
-# plt.plot(beta, label='beta')
-# plt.title("Parameter trajectories")
-# plt.xlabel("Iteration")
-# plt.legend()
-# #plt.savefig("images/beta_trajectories.png")
-# plt.show()
+    print(pred, p, halted_at)
