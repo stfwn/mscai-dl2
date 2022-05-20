@@ -22,7 +22,7 @@ def main(args):
     model = models.PonderNet(
         encoder=None,
         encoding_dim=torch.tensor(datamodule.dims).prod(),
-        step_function="mlp",
+        step_function="bayesian_mlp",
         step_function_args={
             "hidden_dims": [300, 200],
             "state_dim": 100,

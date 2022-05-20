@@ -73,7 +73,8 @@ class PonderNet(LightningModule):
             self.encoder = lambda x: x  # type: ignore
 
         # Step function
-        sf_class = {"mlp": PonderMLP}.get(step_function)
+        sf_class = {"mlp": PonderMLP,
+                    "bayesian_mlp": PonderBayesianMLP}.get(step_function)
         if not sf_class:
             raise ValueError(f"Unknown step function: '{step_function}'")
         self.step_function = sf_class(
@@ -272,7 +273,7 @@ class PonderMLP(nn.Module):
             halted_at.long(),  # (batch)
         )
 
-class PonderBayesian(nn.Module):
+class PonderBayesianMLP(nn.Module):
     def __init__(
         self,
         in_dim: int,
@@ -391,16 +392,18 @@ class PonderBayesian(nn.Module):
             halted_at.long(),  # (batch)
         )
 
-max_ponder_steps = 10
-model = PonderBayesian(
-        in_dim = 10,
-        hidden_dims = [300, 200],
-        out_dim = 4,
-        state_dim = 100,
-        max_ponder_steps=max_ponder_steps,
-        ponder_epsilon = 0.05)
+
 
 if __name__ == "__main__":
+    max_ponder_steps = 10
+    model = PonderBayesianMLP(
+        in_dim=10,
+        hidden_dims=[300, 200],
+        out_dim=4,
+        state_dim=100,
+        max_ponder_steps=max_ponder_steps,
+        ponder_epsilon=0.05)
+
     toy_x = torch.rand((6,10))
     toy_y = torch.rand((6,4))
     pred, p, lambdas, halted_at = model.forward(toy_x)
