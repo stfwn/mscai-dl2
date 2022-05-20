@@ -29,7 +29,7 @@ def main(args):
             "ponder_epsilon": 0.05,
         },
         max_ponder_steps=10,
-        preds_reduction_method="ponder",
+        preds_reduction_method=args.preds_reduction_method,
         out_dim=datamodule.num_classes,
         learning_rate=args.learning_rate,
         task=args.task,
