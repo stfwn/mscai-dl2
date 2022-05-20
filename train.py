@@ -29,9 +29,9 @@ def main(args):
             "ponder_epsilon": 0.05,
         },
         max_ponder_steps=10,
-        preds_reduction_method="bayesian",
+        preds_reduction_method="ponder",
         out_dim=datamodule.num_classes,
-        task="classification",
+        task="bayesian_classification",
     )
     trainer = pl.Trainer(
         accelerator="auto",
@@ -53,10 +53,10 @@ def main(args):
                 default_hp_metric=False,
                 # log_graph=True,
             ),
-            WandbLogger(
-                project="mscai-dl2",
-                log_model=True,
-            ),
+            # WandbLogger(
+            #     project="mscai-dl2",
+            #     log_model=True,
+            # ),
         ],
     )
 
