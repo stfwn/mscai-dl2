@@ -3,13 +3,11 @@ from typing import Literal, Optional, Type
 from pytorch_lightning import LightningModule
 import torch
 from torch import nn, optim
+import torch.distributions.beta as dist_beta
 import torch.nn.functional as F
 import torchmetrics
 
-from loss_functions import *
-
-# #Bayesian imports
-import torch.distributions.beta as dist_beta
+from loss_functions import PonderLoss, PonderBayesianLoss
 
 
 class PonderNet(LightningModule):
@@ -237,9 +235,8 @@ class PonderMLP(nn.Module):
         # State that transfers across steps
         state = x.new_zeros(batch_size, self.state_dim)
 
-        # Probabilities of not having halted so far.
         lambdas = []  # Transition probability
-        p = []  # Probabilities of halting at each step.
+        p = []  # Probabilities of halting at each step
         cum_p_n = x.new_zeros(batch_size)  # Cumulative probability of halting.
         prob_not_halted_so_far = 1
         halted_at = x.new_zeros(batch_size)
@@ -323,17 +320,12 @@ class PonderBayesianMLP(nn.Module):
             self.layers = nn.Sequential(nn.Linear(in_dim + state_dim, total_out_dim))
 
     def forward(self, x):
-        """
-        Turn off pyro_training during normal inference.
-
-        """
         batch_size = x.size(0)
         x = x.view(batch_size, -1)
 
         # State that transfers across steps
         state = x.new_zeros(batch_size, self.state_dim)
 
-        # Probabilities of not having halted so far.
         lambdas = []
         p = []  # Probabilities of halting at each step.
         cum_p_n = x.new_zeros(batch_size)  # Cumulative probability of halting.
@@ -355,15 +347,9 @@ class PonderBayesianMLP(nn.Module):
 
             # 2) Sample lambda_n from beta-distribution
             lambda_params = F.relu(lambda_params) + 1e-7
-            # print(lambda_params)
             alpha, beta = lambda_params[:, 0], lambda_params[:, 1]
-
             distribution = dist_beta.Beta(alpha, beta)
             lambda_n = distribution.rsample()
-            # print('lambda:', lambda_n)
-
-            # with pyro.plate(f"data_{n}", batch_size):
-            #     lambda_n = pyro.sample(f"lambda_{n}", dist.Beta(alpha,beta))
 
             # 3) Store y_hat and probabilities
             y_hat.append(y_hat_n)
@@ -383,20 +369,11 @@ class PonderBayesianMLP(nn.Module):
 
         # # Last step should be used if halting prob never reached above 1-epsilon
         # halted_at[halted_at == 0] = self.max_ponder_steps - 1
-        # p_ = [float(p_step[0]) for p_step in p]
-        # print('p',p_, sum(p_))
 
         # sampling halted at (i.e. dn)
         lambdas_stacked = torch.stack(lambdas)
         p_stacked = torch.stack(p)  # (step, batch)
         y_hat_stacked = torch.stack(y_hat)  # (step, batch, logit)
-
-        # if pyro_training:
-        #     # Compute the posterior predictive
-        #     return torch.sum(p_stacked.unsqueeze(-1) * y_hat_stacked, dim=0)  # (batch, num_labels)
-
-        # with pyro.plate("data", batch_size):
-        #     halted_at = pyro.sample("lambda", dist.Categorical(p_stacked.permute(1,0)))
 
         return {
             "y_hat": y_hat_stacked,  # (step, batch, logit)
@@ -404,20 +381,3 @@ class PonderBayesianMLP(nn.Module):
             "lambdas": lambdas_stacked,  # (step, batch)
             "halted_at": halted_at.long(),  # (batch)
         }
-
-
-if __name__ == "__main__":
-    max_ponder_steps = 10
-    model = PonderBayesianMLP(
-        in_dim=10,
-        hidden_dims=[300, 200],
-        out_dim=4,
-        state_dim=100,
-        max_ponder_steps=max_ponder_steps,
-        ponder_epsilon=0.05,
-    )
-
-    toy_x = torch.rand((6, 10))
-    toy_y = torch.rand((6, 4))
-    pred, p, lambdas, halted_at = model.forward(toy_x)
-    print(pred, p, halted_at)

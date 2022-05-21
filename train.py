@@ -6,7 +6,6 @@ from argparse import ArgumentParser
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
-from pytorch_lightning.utilities import seed
 import torch
 
 # first party
@@ -15,7 +14,7 @@ import models
 
 
 def main(args):
-    seed.seed_everything(420)
+    pl.seed_everything(420, workers=True)
     datamodule = datamodules.FashionMNISTDataModule(
         data_dir="./data", num_workers=args.num_workers
     )
@@ -53,7 +52,6 @@ def main(args):
                 "logs",
                 name=args.model_name,
                 default_hp_metric=False,
-                # log_graph=True,
             ),
             WandbLogger(
                 project="mscai-dl2",
@@ -87,7 +85,7 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "--num-workers",
-        default=4,
+        default=os.cpu_count(),
         type=int,
         help="Number of workers to use in the data loaders. To have a truly deterministic run, this has to be 0.",
     )
