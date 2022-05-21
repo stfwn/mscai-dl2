@@ -64,13 +64,14 @@ class PonderLoss(nn.Module):
 
         return l_rec + l_reg
 
+
 class PonderBayesianLoss(nn.Module):
     def __init__(
         self,
         task_loss_fn: Callable,
         beta_prior: tuple,
         max_ponder_steps: int,
-        scale_reg: float
+        scale_reg: float,
     ):
         """
         Args:
@@ -115,9 +116,13 @@ class PonderBayesianLoss(nn.Module):
         l_rec = torch.log(torch.einsum("ij,ij->j", p, task_losses).mean())
 
         # Regularization term
-        l_reg = self.KL(
-            lambdas.transpose(1, 0).log(),
-            self.prior.rsample(sample_shape=(batch_size, n_steps)).to(lambdas.device),  # type: ignore
-        ).sum(1).mean()  # Sum over the number of steps, then mean over the batch.
+        l_reg = (
+            self.KL(
+                lambdas.transpose(1, 0).log(),
+                self.prior.rsample(sample_shape=(batch_size, n_steps)).to(lambdas.device),  # type: ignore
+            )
+            .sum(1)
+            .mean()
+        )  # Sum over the number of steps, then mean over the batch.
 
         return l_rec + self.scale_reg * l_reg

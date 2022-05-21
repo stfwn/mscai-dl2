@@ -1,2 +1,1 @@
 from pl_bolts.datamodules.fashion_mnist_datamodule import FashionMNISTDataModule
-

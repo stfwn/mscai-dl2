@@ -33,7 +33,7 @@ def main(args):
         out_dim=datamodule.num_classes,
         learning_rate=args.learning_rate,
         task=args.task,
-        loss_beta=args.loss_beta
+        loss_beta=args.loss_beta,
     )
     trainer = pl.Trainer(
         accelerator="auto",
@@ -69,18 +69,46 @@ def main(args):
 if __name__ == "__main__":
     parser = ArgumentParser()
     parser.add_argument(
-        "-m", "--model-name", type=str, choices=["pondermlp"], default="pondermlp")
+        "-m", "--model-name", type=str, choices=["pondermlp"], default="pondermlp"
+    )
     parser.add_argument(
-        "-s", "--step-function", type=str, choices=["bayesian_mlp", "mlp"], default="bayesian_mlp")
+        "-s",
+        "--step-function",
+        type=str,
+        choices=["bayesian_mlp", "mlp"],
+        default="bayesian_mlp",
+    )
     parser.add_argument(
-        "-t", "--task", type=str, choices=["classification", "bayesian_classification"], default="bayesian_classification")
-    parser.add_argument('--num-workers', default=4, type=int,
-            help="Number of workers to use in the data loaders. To have a truly deterministic run, this has to be 0.")
-    parser.add_argument("-lb", "--loss-beta", default=0.01, type=float,
-                        help="Factor by which to multiply the regularization loss when constructing ELBO loss")
-    parser.add_argument("-lr", "--learning-rate", default=3e-4, type=float, help="Learning rate.")
-    parser.add_argument("-pr", "--preds-reduction-method", choices=["ponder", "bayesian"], default="ponder", type=str,
-                        help="Method to use for reducing the number of predictions to a single value.")
+        "-t",
+        "--task",
+        type=str,
+        choices=["classification", "bayesian_classification"],
+        default="bayesian_classification",
+    )
+    parser.add_argument(
+        "--num-workers",
+        default=4,
+        type=int,
+        help="Number of workers to use in the data loaders. To have a truly deterministic run, this has to be 0.",
+    )
+    parser.add_argument(
+        "-lb",
+        "--loss-beta",
+        default=0.01,
+        type=float,
+        help="Factor by which to multiply the regularization loss when constructing ELBO loss",
+    )
+    parser.add_argument(
+        "-lr", "--learning-rate", default=3e-4, type=float, help="Learning rate."
+    )
+    parser.add_argument(
+        "-pr",
+        "--preds-reduction-method",
+        choices=["ponder", "bayesian"],
+        default="ponder",
+        type=str,
+        help="Method to use for reducing the number of predictions to a single value.",
+    )
 
     args = parser.parse_args()
     main(args)

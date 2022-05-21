@@ -11,21 +11,22 @@ from loss_functions import *
 # #Bayesian imports
 import torch.distributions.beta as dist_beta
 
+
 class PonderNet(LightningModule):
     def __init__(
-            self,
-            step_function: Literal["mlp"],
-            step_function_args: dict,
-            encoding_dim: int,
-            out_dim: int,
-            task: str,
-            max_ponder_steps: int,
-            preds_reduction_method: Literal["ponder", "bayesian"] = "ponder",
-            encoder: Optional[str] = None,
-            encoder_args: Optional[dict] = None,
-            learning_rate: float = 3e-4,
-            lambda_prior: float = 0.2,
-            loss_beta: float = 0.01,
+        self,
+        step_function: Literal["mlp"],
+        step_function_args: dict,
+        encoding_dim: int,
+        out_dim: int,
+        task: str,
+        max_ponder_steps: int,
+        preds_reduction_method: Literal["ponder", "bayesian"] = "ponder",
+        encoder: Optional[str] = None,
+        encoder_args: Optional[dict] = None,
+        learning_rate: float = 3e-4,
+        lambda_prior: float = 0.2,
+        loss_beta: float = 0.01,
     ):
         """
         Args:
@@ -56,8 +57,9 @@ class PonderNet(LightningModule):
             self.encoder = lambda x: x  # type: ignore
 
         # Step function
-        sf_class = {"mlp": PonderMLP,
-                    "bayesian_mlp": PonderBayesianMLP}.get(step_function)
+        sf_class = {"mlp": PonderMLP, "bayesian_mlp": PonderBayesianMLP}.get(
+            step_function
+        )
         if not sf_class:
             raise ValueError(f"Unknown step function: '{step_function}'")
         self.step_function = sf_class(
@@ -76,15 +78,16 @@ class PonderNet(LightningModule):
                     beta=loss_beta,
                     lambda_prior=lambda_prior,
                     max_ponder_steps=max_ponder_steps,
-                )),
+                )
+            ),
             "bayesian_classification": (
                 lambda: PonderBayesianLoss(
                     task_loss_fn=F.cross_entropy,
                     beta_prior=(10, 10),
                     max_ponder_steps=max_ponder_steps,
-                    scale_reg=loss_beta
+                    scale_reg=loss_beta,
                 )
-            )
+            ),
         }.get(task)
         if not lf_class:
             raise NotImplementedError(f"Unknown task: '{task}'")
@@ -148,11 +151,23 @@ class PonderNet(LightningModule):
         x, targets = batch
         out_dict = self(x)
         loss = self.loss_function(out_dict, targets)
-        self.train_acc(self.reduce_preds(out_dict["y_hat"], out_dict["halted_at"]), targets)
+        self.train_acc(
+            self.reduce_preds(out_dict["y_hat"], out_dict["halted_at"]), targets
+        )
         self.log("loss/train", loss)
         self.log("acc/train", self.train_acc, on_step=True, on_epoch=True)
-        self.log("lambda/first", out_dict["lambdas"][0, :].mean(), on_step=True, on_epoch=True)
-        self.log("lambda/last", out_dict["lambdas"][-1, :].mean(), on_step=True, on_epoch=True)
+        self.log(
+            "lambda/first",
+            out_dict["lambdas"][0, :].mean(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
+            "lambda/last",
+            out_dict["lambdas"][-1, :].mean(),
+            on_step=True,
+            on_epoch=True,
+        )
 
         return loss
 
@@ -160,7 +175,9 @@ class PonderNet(LightningModule):
         x, targets = batch
         out_dict = self(x)
         loss = self.loss_function(out_dict, targets)
-        self.val_acc(self.reduce_preds(out_dict["y_hat"], out_dict["halted_at"]), targets)
+        self.val_acc(
+            self.reduce_preds(out_dict["y_hat"], out_dict["halted_at"]), targets
+        )
         self.log("loss/val", loss)
         self.log("acc/val", self.val_acc, on_step=True, on_epoch=True)
         return loss
@@ -169,7 +186,9 @@ class PonderNet(LightningModule):
         x, targets = batch
         out_dict = self(x)
         loss = self.loss_function(out_dict, targets)
-        self.test_acc(self.reduce_preds(out_dict["y_hat"], out_dict["halted_at"]), targets)
+        self.test_acc(
+            self.reduce_preds(out_dict["y_hat"], out_dict["halted_at"]), targets
+        )
         self.log("loss/test", loss)
         self.log("acc/test", self.test_acc, on_step=False, on_epoch=True)
         return loss
@@ -177,14 +196,14 @@ class PonderNet(LightningModule):
 
 class PonderMLP(nn.Module):
     def __init__(
-            self,
-            in_dim: int,
-            hidden_dims: list[int],
-            out_dim: int,
-            state_dim: int,
-            max_ponder_steps: int,
-            ponder_epsilon: float,
-            allow_early_return: bool = True,
+        self,
+        in_dim: int,
+        hidden_dims: list[int],
+        out_dim: int,
+        state_dim: int,
+        max_ponder_steps: int,
+        ponder_epsilon: float,
+        allow_early_return: bool = True,
     ):
         """
         Args:
@@ -219,7 +238,7 @@ class PonderMLP(nn.Module):
         state = x.new_zeros(batch_size, self.state_dim)
 
         # Probabilities of not having halted so far.
-        lambdas = [] # Transition probability
+        lambdas = []  # Transition probability
         p = []  # Probabilities of halting at each step.
         cum_p_n = x.new_zeros(batch_size)  # Cumulative probability of halting.
         prob_not_halted_so_far = 1
@@ -248,7 +267,6 @@ class PonderMLP(nn.Module):
             # Update halted_at where needed (one-liner courtesy of jankrepl on GitHub)
             halted_at = (n * (halted_at == 0) * lambda_n.bernoulli()).max(halted_at)
 
-
             # If the probability is over epsilon we always stop.
             halted_at[cum_p_n > (1 - self.ponder_epsilon)] = n
 
@@ -262,20 +280,20 @@ class PonderMLP(nn.Module):
             "y_hat": torch.stack(y_hat),  # (step, batch, logit)
             "lambdas": torch.stack(lambdas),
             "p": torch.stack(p),  # (step, batch)
-            "halted_at": halted_at.long()  # (batch)
+            "halted_at": halted_at.long(),  # (batch)
         }
 
 
 class PonderBayesianMLP(nn.Module):
     def __init__(
-            self,
-            in_dim: int,
-            hidden_dims: list[int],
-            out_dim: int,
-            state_dim: int,
-            max_ponder_steps: int,
-            ponder_epsilon: float,
-            allow_early_return: bool = True,
+        self,
+        in_dim: int,
+        hidden_dims: list[int],
+        out_dim: int,
+        state_dim: int,
+        max_ponder_steps: int,
+        ponder_epsilon: float,
+        allow_early_return: bool = True,
     ):
         """
         Args:
@@ -292,7 +310,9 @@ class PonderBayesianMLP(nn.Module):
         self.ponder_epsilon = ponder_epsilon
         self.allow_early_return = allow_early_return
 
-        total_out_dim = out_dim + state_dim + 2  # add two extra items for dimension for alpha and beta
+        total_out_dim = (
+            out_dim + state_dim + 2
+        )  # add two extra items for dimension for alpha and beta
         if hidden_dims:
             layers: list[nn.Module] = [nn.Linear(in_dim + state_dim, hidden_dims[0])]
             for in_, out in zip(hidden_dims[:-1], hidden_dims[1:]):
@@ -394,7 +414,8 @@ if __name__ == "__main__":
         out_dim=4,
         state_dim=100,
         max_ponder_steps=max_ponder_steps,
-        ponder_epsilon=0.05)
+        ponder_epsilon=0.05,
+    )
 
     toy_x = torch.rand((6, 10))
     toy_y = torch.rand((6, 4))
