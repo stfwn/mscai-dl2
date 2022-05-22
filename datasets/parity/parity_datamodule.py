@@ -3,7 +3,7 @@ import os
 
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
-from parity import ParityDataset, save_parity_data
+from .parity import ParityDataset, save_parity_data
 
 
 class ParityDatamodule(pl.LightningDataModule):

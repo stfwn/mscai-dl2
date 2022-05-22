@@ -1,2 +1,2 @@
 from pl_bolts.datamodules.fashion_mnist_datamodule import FashionMNISTDataModule
-from .datasets.parity.parity_datamodule import ParityDatamodule
+from datasets.parity.parity_datamodule import ParityDatamodule
