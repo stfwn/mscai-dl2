@@ -105,7 +105,7 @@ if __name__ == '__main__':
     extrap = False
 
     save_parity_data(vector_size=size_vector, num_problems=num_probs, path=save_dir, extrapolate=extrap)
-    train_loader, valid_loader, test_loader = create_parity_dataloaders("./", vector_size=size_vector, batch_size=32, num_workers=4, extrapolate=extrap)
+    train_loader, valid_loader, test_loader = create_parity_dataloaders(save_dir, vector_size=size_vector, batch_size=32, num_workers=1, extrapolate=extrap)
 
     # Print the first batch of the training set
     print("Training set:")
