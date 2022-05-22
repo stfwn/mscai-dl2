@@ -70,7 +70,7 @@ def save_parity_data(vector_size: int, num_problems: list, path: str, extrapolat
         valid_data = generate_parity_data(vector_size, num_problems[1])
         test_data = generate_parity_data(vector_size, num_problems[2])
 
-    problem_str = f"{vector_size}" + ("_extrapolate" if extrapolate else "")
+    problem_str = f"{vector_size}{'_extrapolate' if extrapolate else ''}"
 
     torch.save(train_data, os.path.join(path, f"train_{problem_str}.pt"))
     torch.save(valid_data, os.path.join(path, f"valid_{problem_str}.pt"))
