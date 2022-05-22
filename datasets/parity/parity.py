@@ -42,7 +42,7 @@ def generate_parity_data(
         max_integer_change = vector_size
 
     problems = torch.zeros((num_problems, vector_size))
-    labels = torch.zeros(num_problems)
+    labels = torch.zeros(num_problems, dtype=torch.int64)
 
     for index, problem in enumerate(problems):
         # Sample which indices should be changed from 0 to -1 or 1.
