@@ -11,17 +11,18 @@ class ParityDataset(Dataset):
     PyTorch Datset for the parity problem as introduced in the original ACT paper (Graves, 2016).
     """
 
-    def __init__(self, filepath):
+    def __init__(self, filepath: str):
         self.problems, self.labels = torch.load(filepath)
 
     def __len__(self):
         return len(self.problems)
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx: int):
         return self.problems[idx], self.labels[idx]
 
 
-def generate_parity_data(vector_size, num_problems, min_integer_change=None, max_integer_change=None) -> Tuple[torch.Tensor, torch.Tensor]:
+def generate_parity_data(vector_size: int, num_problems: int, min_integer_change: int = None,
+                         max_integer_change: int = None) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Generates a dataset of parity problems.
     :param vector_size: The size of the vectors to be generated.
@@ -55,7 +56,7 @@ def generate_parity_data(vector_size, num_problems, min_integer_change=None, max
 
 def save_parity_data(vector_size: int, num_problems: tuple[int, int, int], path: str, extrapolate: bool = False):
     """
-    Saves the parity problems and labels to a file.
+    Saves the parity problems and labels to a file; for the train, valid and test dataset respectively.
     :param vector_size: The size of the vectors to be generated.
     :param num_problems: The number of problems to be generated.
     :param path: The path to the file to save the data to.
@@ -64,7 +65,7 @@ def save_parity_data(vector_size: int, num_problems: tuple[int, int, int], path:
     if extrapolate:
         train_data = generate_parity_data(vector_size, num_problems[0], 1, vector_size // 2)
         valid_data = generate_parity_data(vector_size, num_problems[1], vector_size // 2 + 1, vector_size)
-        test_data = generate_parity_data(vector_size, num_problems[2],  vector_size // 2 + 1, vector_size)
+        test_data = generate_parity_data(vector_size, num_problems[2], vector_size // 2 + 1, vector_size)
     else:
         train_data = generate_parity_data(vector_size, num_problems[0])
         valid_data = generate_parity_data(vector_size, num_problems[1])
@@ -77,7 +78,8 @@ def save_parity_data(vector_size: int, num_problems: tuple[int, int, int], path:
     torch.save(test_data, os.path.join(path, f"test_{problem_str}.pt"))
 
 
-def create_parity_dataloaders(path, batch_size, num_workers, vector_size=48, extrapolate=False) -> Tuple[DataLoader, DataLoader, DataLoader]:
+def create_parity_dataloaders(path: str, batch_size: int, num_workers: int, vector_size=48, extrapolate=False) -> Tuple[
+    DataLoader, DataLoader, DataLoader]:
     """
     Creates the dataloaders for the parity problems.
     :param path: The path to the parity problems.
@@ -87,29 +89,31 @@ def create_parity_dataloaders(path, batch_size, num_workers, vector_size=48, ext
     :param extrapolate: Whether to generate the extrapolation case or not.
     :return: A tuple containing the dataloaders for the training, validation and test sets.
     """
-    problem_str = f"{vector_size}" + ("_extrapolate" if extrapolate else "")
+    problem_str = f"{vector_size}{'_extrapolate' if extrapolate else ''}"
 
     train_dataset = ParityDataset(os.path.join(path, f"train_{problem_str}.pt"))
     valid_dataset = ParityDataset(os.path.join(path, f"valid_{problem_str}.pt"))
     test_dataset = ParityDataset(os.path.join(path, f"test_{problem_str}.pt"))
 
     return DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers), \
-           DataLoader(valid_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers), \
-           DataLoader(test_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+           DataLoader(valid_dataset, batch_size=batch_size, num_workers=num_workers), \
+           DataLoader(test_dataset, batch_size=batch_size, num_workers=num_workers)
 
 
 if __name__ == '__main__':
     size_vector = 10
-    num_probs = [100000, 10000, 10000]
+    num_probs = (100000, 10000, 10000)
     save_dir = "./"
     extrap = False
 
     save_parity_data(vector_size=size_vector, num_problems=num_probs, path=save_dir, extrapolate=extrap)
-    train_loader, valid_loader, test_loader = create_parity_dataloaders(save_dir, vector_size=size_vector, batch_size=32, num_workers=1, extrapolate=extrap)
+    train_loader, valid_loader, test_loader = create_parity_dataloaders(save_dir, vector_size=size_vector,
+                                                                        batch_size=32, num_workers=1,
+                                                                        extrapolate=extrap)
 
     # Print the first batch of the training set
     print("Training set:")
-    for index, (problems, labels) in enumerate(train_loader):
+    for _, (problems, labels) in enumerate(train_loader):
         for problem, label in zip(problems, labels):
             print(problem, label)
 
@@ -117,9 +121,8 @@ if __name__ == '__main__':
 
     # Print the first batch of the validation set (to test if extrapolation is working)
     print("\n\nValidation set:")
-    for index, (problems, labels) in enumerate(valid_loader):
+    for _, (problems, labels) in enumerate(valid_loader):
         for problem, label in zip(problems, labels):
             print(problem, label)
 
         break
-
