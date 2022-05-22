@@ -92,6 +92,7 @@ def save_parity_data(
 
     problem_str = f"{vector_size}{'_extrapolate' if extrapolate else ''}"
 
+    os.makedirs(path, exist_ok=True)
     torch.save(train_data, os.path.join(path, f"train_{problem_str}.pt"))
     torch.save(valid_data, os.path.join(path, f"valid_{problem_str}.pt"))
     torch.save(test_data, os.path.join(path, f"test_{problem_str}.pt"))
