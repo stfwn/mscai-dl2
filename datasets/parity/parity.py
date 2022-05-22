@@ -53,7 +53,7 @@ def generate_parity_data(vector_size, num_problems, min_integer_change=None, max
     return problems, labels
 
 
-def save_parity_data(vector_size: int, num_problems: list, path: str, extrapolate: bool = False):
+def save_parity_data(vector_size: int, num_problems: tuple[int, int, int], path: str, extrapolate: bool = False):
     """
     Saves the parity problems and labels to a file.
     :param vector_size: The size of the vectors to be generated.
