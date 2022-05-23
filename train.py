@@ -73,14 +73,15 @@ if __name__ == "__main__":
         "-s",
         "--step-function",
         type=str,
-        choices=["bayesian_mlp", "mlp"],
+        choices=["bayesian-mlp", "mlp"],
     )
     parser.add_argument(
         "-t",
         "--task",
         type=str,
-        choices=["classification", "bayesian_classification"],
-        help="Used to determine loss function during training.",
+        choices=["classification"],
+        default="classification",
+        help="Used to determine reconstruction loss function.",
     )
     parser.add_argument(
         "-pr",

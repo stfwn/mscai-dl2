@@ -55,7 +55,7 @@ class PonderNet(LightningModule):
             self.encoder = lambda x: x  # type: ignore
 
         # Step function
-        sf_class = {"mlp": PonderMLP, "bayesian_mlp": PonderBayesianMLP}.get(
+        sf_class = {"mlp": PonderMLP, "bayesian-mlp": PonderBayesianMLP}.get(
             step_function
         )
         if not sf_class:
@@ -71,21 +71,21 @@ class PonderNet(LightningModule):
         # Loss
         lf_class = {
             "classification": (
-                lambda: PonderLoss(
-                    task_loss_fn=F.cross_entropy,
-                    beta=loss_beta,
-                    lambda_prior=lambda_prior,
-                    max_ponder_steps=max_ponder_steps,
-                )
-            ),
-            "bayesian_classification": (
-                lambda: PonderBayesianLoss(
-                    task_loss_fn=F.cross_entropy,
-                    beta_prior=(10, 10),
-                    max_ponder_steps=max_ponder_steps,
-                    scale_reg=loss_beta,
-                )
-            ),
+                {
+                    "mlp": lambda: PonderLoss(
+                        task_loss_fn=F.cross_entropy,
+                        beta=loss_beta,
+                        lambda_prior=lambda_prior,
+                        max_ponder_steps=max_ponder_steps,
+                    ),
+                    "bayesian-mlp": lambda: PonderBayesianLoss(
+                        task_loss_fn=F.cross_entropy,
+                        beta_prior=(10, 10),
+                        max_ponder_steps=max_ponder_steps,
+                        scale_reg=loss_beta,
+                    ),
+                }.get(step_function)
+            )
         }.get(task)
         if not lf_class:
             raise NotImplementedError(f"Unknown task: '{task}'")
@@ -304,7 +304,9 @@ class PonderMLP(nn.Module):
             halted_at = (n * (halted_at == 0) * lambda_n.bernoulli()).max(halted_at)
 
             # If the probability is over epsilon we always stop.
-            halted_at[cum_p_n > (1 - self.ponder_epsilon)] = n
+            halted_at[
+                (cum_p_n > (1 - self.ponder_epsilon)).bool() & (halted_at == 0)
+            ] = n
 
             if self.allow_early_return and halted_at.all():
                 break
@@ -401,7 +403,9 @@ class PonderBayesianMLP(nn.Module):
             halted_at = (n * (halted_at == 0) * lambda_n.bernoulli()).max(halted_at)
 
             # If the probability is over epsilon we always stop.
-            halted_at[cum_p_n > (1 - self.ponder_epsilon)] = n
+            halted_at[
+                (cum_p_n > (1 - self.ponder_epsilon)).bool() & (halted_at == 0)
+            ] = n
 
             if self.allow_early_return and halted_at.all():
                 break
