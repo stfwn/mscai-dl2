@@ -53,10 +53,10 @@ def main(args):
                 name=args.model_name,
                 default_hp_metric=False,
             ),
-            WandbLogger(
-                project="mscai-dl2",
-                log_model=True,
-            ),
+            # WandbLogger(
+            #     project="mscai-dl2",
+            #     log_model=True,
+            # ),
         ],
     )
 
@@ -82,6 +82,15 @@ if __name__ == "__main__":
         type=str,
         choices=["classification", "bayesian_classification"],
         default="bayesian_classification",
+        help="Used to determine loss function during training."
+    )
+    parser.add_argument(
+        "-pr",
+        "--preds-reduction-method",
+        choices=["ponder", "bayesian"],
+        default="bayesian",
+        type=str,
+        help="Method to use for reducing the predictions for each ponder step to a single value.",
     )
     parser.add_argument(
         "--num-workers",
@@ -98,14 +107,6 @@ if __name__ == "__main__":
     )
     parser.add_argument(
         "-lr", "--learning-rate", default=3e-4, type=float, help="Learning rate."
-    )
-    parser.add_argument(
-        "-pr",
-        "--preds-reduction-method",
-        choices=["ponder", "bayesian"],
-        default="ponder",
-        type=str,
-        help="Method to use for reducing the predictions for each ponder step to a single value.",
     )
 
     args = parser.parse_args()
