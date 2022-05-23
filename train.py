@@ -105,7 +105,7 @@ if __name__ == "__main__":
         choices=["ponder", "bayesian"],
         default="ponder",
         type=str,
-        help="Method to use for reducing the number of predictions to a single value.",
+        help="Method to use for reducing the predictions for each ponder step to a single value.",
     )
 
     args = parser.parse_args()
