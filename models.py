@@ -139,7 +139,7 @@ class PonderNet(LightningModule):
                 p: halting probability (ponder_steps, batch_size)
         :return: predictions (batch_size, logits)
         """
-        preds = out_dict['y_hat']
+        preds = out_dict['preds']
         halted_at = out_dict['halted_at']
         return preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at]
 
@@ -154,7 +154,7 @@ class PonderNet(LightningModule):
         :return: predictions (batch_size, logits)
         """
         # return preds.permute(1, 2, 0) @ self.prior
-        preds = out_dict['y_hat']
+        preds = out_dict['preds']
         p = out_dict['p']
         return torch.einsum("sbl,sb->bl", preds, p)
 
@@ -257,11 +257,11 @@ class PonderMLP(nn.Module):
         cum_p_n = x.new_zeros(batch_size)  # Cumulative probability of halting.
         prob_not_halted_so_far = 1
         halted_at = x.new_zeros(batch_size)
-        y_hat = []
+        preds = []
 
         for n in range(self.max_ponder_steps):
             # 1) Pass through model
-            y_hat_n, state, lambda_n = self.layers(
+            preds_n, state, lambda_n = self.layers(
                 torch.concat((x, state), dim=1)
             ).tensor_split(
                 indices=(
@@ -272,7 +272,7 @@ class PonderMLP(nn.Module):
             )
 
             lambda_n = lambda_n.squeeze().sigmoid()
-            y_hat.append(y_hat_n)
+            preds.append(preds_n)
             lambdas.append(lambda_n)
             p.append(prob_not_halted_so_far * lambda_n)
             prob_not_halted_so_far = prob_not_halted_so_far * (1 - lambda_n)
@@ -291,7 +291,7 @@ class PonderMLP(nn.Module):
         halted_at[halted_at == 0] = self.max_ponder_steps - 1
 
         return {
-            "y_hat": torch.stack(y_hat),  # (step, batch, logit)
+            "preds": torch.stack(preds),  # (step, batch, logit)
             "lambdas": torch.stack(lambdas),
             "p": torch.stack(p),  # (step, batch)
             "halted_at": halted_at.long(),  # (batch)
@@ -348,11 +348,11 @@ class PonderBayesianMLP(nn.Module):
         cum_p_n = x.new_zeros(batch_size)  # Cumulative probability of halting.
         prob_not_halted_so_far = 1
         halted_at = x.new_zeros(batch_size)
-        y_hat = []
+        preds = []
 
         for n in range(self.max_ponder_steps):
             # 1) Pass through model
-            y_hat_n, state, lambda_params = self.layers(
+            preds_n, state, lambda_params = self.layers(
                 torch.concat((x, state), dim=1)
             ).tensor_split(
                 indices=(
@@ -368,8 +368,8 @@ class PonderBayesianMLP(nn.Module):
             distribution = dist_beta.Beta(alpha, beta)
             lambda_n = distribution.rsample()
 
-            # 3) Store y_hat and probabilities
-            y_hat.append(y_hat_n)
+            # 3) Store preds and probabilities
+            preds.append(preds_n)
             lambdas.append(lambda_n)
             p.append(prob_not_halted_so_far * lambda_n)
             prob_not_halted_so_far = prob_not_halted_so_far * (1 - lambda_n)
@@ -390,10 +390,10 @@ class PonderBayesianMLP(nn.Module):
         # sampling halted at (i.e. dn)
         lambdas_stacked = torch.stack(lambdas)
         p_stacked = torch.stack(p)  # (step, batch)
-        y_hat_stacked = torch.stack(y_hat)  # (step, batch, logit)
+        preds_stacked = torch.stack(preds)  # (step, batch, logit)
 
         return {
-            "y_hat": y_hat_stacked,  # (step, batch, logit)
+            "preds": preds_stacked,  # (step, batch, logit)
             "p": p_stacked,  # (step, batch)
             "lambdas": lambdas_stacked,  # (step, batch)
             "halted_at": halted_at.long(),  # (batch)

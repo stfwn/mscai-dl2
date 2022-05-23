@@ -40,7 +40,7 @@ class PonderLoss(nn.Module):
             `targets`: Targets of shape (batch_size)
 
         """
-        preds, p = out_dict["y_hat"], out_dict["p"]
+        preds, p = out_dict["preds"], out_dict["p"]
 
         n_steps, batch_size, _ = preds.shape
 
@@ -99,7 +99,7 @@ class PonderBayesianLoss(nn.Module):
             `targets`: Targets of shape (batch_size)
 
         """
-        preds, p, lambdas = out_dict["y_hat"], out_dict["p"], out_dict["lambdas"]
+        preds, p, lambdas = out_dict["preds"], out_dict["p"], out_dict["lambdas"]
 
         n_steps, batch_size, _ = preds.shape
 
