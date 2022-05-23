@@ -1,10 +1,10 @@
-from typing import Literal, Optional, Type
+from typing import Literal, Optional
 
-from pytorch_lightning import LightningModule
 import torch
-from torch import nn, optim
 import torch.nn.functional as F
 import torchmetrics
+from pytorch_lightning import LightningModule
+from torch import nn, optim
 
 from loss_functions import PonderLoss
 
@@ -138,27 +138,51 @@ class PonderNet(LightningModule):
         x, targets = batch
         preds, p, halted_at = self(x)
         loss = self.loss_function(preds, p, halted_at, targets)
+
         self.train_acc(self.reduce_preds(preds, halted_at), targets)
-        self.log("loss/train", loss)
         self.log("acc/train", self.train_acc, on_step=False, on_epoch=True)
+        self.log("loss/train", loss)
+
+        halted_at = halted_at.float()
+        self.log("halted_at/mean/train", halted_at.mean(), on_step=True, on_epoch=True)
+        self.log("halted_at/std/train", halted_at.std(), on_step=True, on_epoch=True)
+        self.log(
+            "halted_at/median/train", halted_at.median(), on_step=True, on_epoch=True
+        )
         return loss
 
     def validation_step(self, batch, batch_idx):
         x, targets = batch
         preds, p, halted_at = self(x)
         loss = self.loss_function(preds, p, halted_at, targets)
+
         self.val_acc(self.reduce_preds(preds, halted_at), targets)
         self.log("loss/val", loss)
         self.log("acc/val", self.val_acc, on_step=False, on_epoch=True)
+
+        halted_at = halted_at.float()
+        self.log("halted_at/mean/val", halted_at.mean(), on_step=True, on_epoch=True)
+        self.log("halted_at/std/val", halted_at.std(), on_step=True, on_epoch=True)
+        self.log(
+            "halted_at/median/val", halted_at.median(), on_step=True, on_epoch=True
+        )
         return loss
 
     def test_step(self, batch, batch_idx):
         x, targets = batch
         preds, p, halted_at = self(x)
         loss = self.loss_function(preds, p, halted_at, targets)
+
         self.test_acc(self.reduce_preds(preds, halted_at), targets)
         self.log("loss/test", loss)
         self.log("acc/test", self.test_acc, on_step=False, on_epoch=True)
+
+        halted_at = halted_at.float()
+        self.log("halted_at/mean/test", halted_at.mean(), on_step=True, on_epoch=True)
+        self.log("halted_at/std/test", halted_at.std(), on_step=True, on_epoch=True)
+        self.log(
+            "halted_at/median/test", halted_at.median(), on_step=True, on_epoch=True
+        )
         return loss
 
 
@@ -212,7 +236,7 @@ class PonderMLP(nn.Module):
         halted_at = x.new_zeros(batch_size)
         y_hat = []
 
-        for n in range(self.max_ponder_steps):
+        for n in range(1, self.max_ponder_steps + 1):
             # 1) Pass through model
             y_hat_n, state, lambda_n = self.layers(
                 torch.concat((x, state), dim=1)
@@ -228,7 +252,7 @@ class PonderMLP(nn.Module):
             y_hat.append(y_hat_n)
             p.append(prob_not_halted_so_far * lambda_n)
             prob_not_halted_so_far = prob_not_halted_so_far * (1 - lambda_n)
-            cum_p_n += p[n]
+            cum_p_n += p[n - 1]
 
             # Update halted_at where needed (one-liner courtesy of jankrepl on GitHub)
             halted_at = (n * (halted_at == 0) * lambda_n.bernoulli()).max(halted_at)
@@ -240,10 +264,10 @@ class PonderMLP(nn.Module):
                 break
 
         # Last step should be used if halting prob never reached above 1-epsilon
-        halted_at[halted_at == 0] = self.max_ponder_steps - 1
+        halted_at[halted_at == 0] = self.max_ponder_steps
 
         return (
             torch.stack(y_hat),  # (step, batch, logit)
             torch.stack(p),  # (step, batch)
-            halted_at.long(),  # (batch)
+            (halted_at - 1).long(),  # (batch)
         )
