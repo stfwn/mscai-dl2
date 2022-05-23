@@ -116,7 +116,7 @@ class PonderNet(LightningModule):
         )
         return [optimizer], [{"scheduler": scheduler, "monitor": "loss/val"}]
 
-    def reduce_preds(self, preds, halted_at):
+    def reduce_preds(self, out_dict):
         """
         Get the final predictions where the network decided to halt.
 
@@ -127,19 +127,36 @@ class PonderNet(LightningModule):
         Returns:
             (batch, logit)
         """
-        return self.preds_reduction_fn(preds, halted_at)
+        return self.preds_reduction_fn(out_dict)
 
     @staticmethod
-    def reduce_preds_ponder(preds, halted_at):
+    def reduce_preds_ponder(out_dict):
+        """
+        Reduces predictons from multiple ponder steps to one prediction,
+        using halted_at.
+        out_dict: dictionary containing:
+                preds: (ponder_steps, batch_size, logits)
+                p: halting probability (ponder_steps, batch_size)
+        :return: predictions (batch_size, logits)
+        """
+        preds = out_dict['y_hat']
+        halted_at = out_dict['halted_at']
         return preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at]
 
-    def reduce_preds_bayesian(self, preds, *args):
+    @staticmethod
+    def reduce_preds_bayesian(out_dict):
         """
-        Args:
-            preds: (ponder_steps, batch_size, logits)
-            *args: Arg sink for compatibility
+        Reduces predictons from multiple ponder steps to one prediction,
+        using weighted average.
+        out_dict: dictionary containing:
+                preds: (ponder_steps, batch_size, logits)
+                p: halting probability (ponder_steps, batch_size)
+        :return: predictions (batch_size, logits)
         """
-        return preds.permute(1, 2, 0) @ self.prior
+        # return preds.permute(1, 2, 0) @ self.prior
+        preds = out_dict['y_hat']
+        p = out_dict['p']
+        return torch.einsum("sbl,sb->bl", preds, p)
 
     def forward(self, x):
         encoding = self.encoder(x)
@@ -150,7 +167,7 @@ class PonderNet(LightningModule):
         out_dict = self(x)
         loss = self.loss_function(out_dict, targets)
         self.train_acc(
-            self.reduce_preds(out_dict["y_hat"], out_dict["halted_at"]), targets
+            self.reduce_preds(out_dict), targets
         )
         self.log("loss/train", loss)
         self.log("acc/train", self.train_acc, on_step=True, on_epoch=True)
@@ -174,7 +191,7 @@ class PonderNet(LightningModule):
         out_dict = self(x)
         loss = self.loss_function(out_dict, targets)
         self.val_acc(
-            self.reduce_preds(out_dict["y_hat"], out_dict["halted_at"]), targets
+            self.reduce_preds(out_dict), targets
         )
         self.log("loss/val", loss)
         self.log("acc/val", self.val_acc, on_step=True, on_epoch=True)
@@ -185,7 +202,7 @@ class PonderNet(LightningModule):
         out_dict = self(x)
         loss = self.loss_function(out_dict, targets)
         self.test_acc(
-            self.reduce_preds(out_dict["y_hat"], out_dict["halted_at"]), targets
+            self.reduce_preds(out_dict), targets
         )
         self.log("loss/test", loss)
         self.log("acc/test", self.test_acc, on_step=False, on_epoch=True)
@@ -367,8 +384,8 @@ class PonderBayesianMLP(nn.Module):
             # if self.allow_early_return and halted_at.all():
             #     break
 
-        # # Last step should be used if halting prob never reached above 1-epsilon
-        # halted_at[halted_at == 0] = self.max_ponder_steps - 1
+        # Last step should be used if halting prob never reached above 1-epsilon
+        halted_at[halted_at == 0] = self.max_ponder_steps - 1
 
         # sampling halted at (i.e. dn)
         lambdas_stacked = torch.stack(lambdas)
