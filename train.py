@@ -4,9 +4,9 @@ from argparse import ArgumentParser
 
 # third party
 import pytorch_lightning as pl
+import torch
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
-import torch
 
 # first party
 import datamodules
@@ -53,10 +53,10 @@ def main(args):
                 name=args.model_name,
                 default_hp_metric=False,
             ),
-            # WandbLogger(
-            #     project="mscai-dl2",
-            #     log_model=True,
-            # ),
+            WandbLogger(
+                project="mscai-dl2",
+                log_model=True,
+            ),
         ],
     )
 
@@ -82,13 +82,13 @@ if __name__ == "__main__":
         type=str,
         choices=["classification", "bayesian_classification"],
         default="bayesian_classification",
-        help="Used to determine loss function during training."
+        help="Used to determine loss function during training.",
     )
     parser.add_argument(
         "-pr",
         "--preds-reduction-method",
         choices=["ponder", "bayesian"],
-        default="bayesian",
+        default="ponder",
         type=str,
         help="Method to use for reducing the predictions for each ponder step to a single value.",
     )
@@ -103,7 +103,7 @@ if __name__ == "__main__":
         "--loss-beta",
         default=0.01,
         type=float,
-        help="Factor by which to multiply the regularization loss when constructing ELBO loss",
+        help="Factor by which to multiply the regularization loss term",
     )
     parser.add_argument(
         "-lr", "--learning-rate", default=3e-4, type=float, help="Learning rate."
