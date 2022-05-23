@@ -137,7 +137,10 @@ class PonderNet(LightningModule):
     def training_step(self, batch, batch_idx):
         x, targets = batch
         preds, p, halted_at = self(x)
-        loss = self.loss_function(preds, p, halted_at, targets)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets)
+        loss = rec_loss + reg_loss
+        self.log("rec_loss/train", rec_loss)
+        self.log("reg_loss/train", reg_loss)
 
         self.train_acc(self.reduce_preds(preds, halted_at), targets)
         self.log("acc/train", self.train_acc, on_step=False, on_epoch=True)
@@ -154,7 +157,10 @@ class PonderNet(LightningModule):
     def validation_step(self, batch, batch_idx):
         x, targets = batch
         preds, p, halted_at = self(x)
-        loss = self.loss_function(preds, p, halted_at, targets)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets)
+        loss = rec_loss + reg_loss
+        self.log("rec_loss/val", rec_loss)
+        self.log("reg_loss/val", reg_loss)
 
         self.val_acc(self.reduce_preds(preds, halted_at), targets)
         self.log("loss/val", loss)
@@ -171,7 +177,10 @@ class PonderNet(LightningModule):
     def test_step(self, batch, batch_idx):
         x, targets = batch
         preds, p, halted_at = self(x)
-        loss = self.loss_function(preds, p, halted_at, targets)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets)
+        loss = rec_loss + reg_loss
+        self.log("rec_loss/test", rec_loss)
+        self.log("reg_loss/test", reg_loss)
 
         self.test_acc(self.reduce_preds(preds, halted_at), targets)
         self.log("loss/test", loss)
@@ -258,7 +267,11 @@ class PonderMLP(nn.Module):
             halted_at = (n * (halted_at == 0) * lambda_n.bernoulli()).max(halted_at)
 
             # If the probability is over epsilon we always stop.
-            halted_at[cum_p_n > (1 - self.ponder_epsilon)] = n
+            halted_at[
+                torch.logical_and(
+                    (cum_p_n > (1 - self.ponder_epsilon)), (halted_at == 0)
+                )
+            ] = n
 
             if self.allow_early_return and halted_at.all():
                 break
@@ -266,8 +279,12 @@ class PonderMLP(nn.Module):
         # Last step should be used if halting prob never reached above 1-epsilon
         halted_at[halted_at == 0] = self.max_ponder_steps
 
+        # Normalize p so it's an actual distribution
+        p = torch.stack(p)
+        p = p / p.sum(0)
+
         return (
             torch.stack(y_hat),  # (step, batch, logit)
-            torch.stack(p),  # (step, batch)
+            p,  # (step, batch)
             (halted_at - 1).long(),  # (batch)
         )

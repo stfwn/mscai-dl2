@@ -16,8 +16,13 @@ import models
 
 def main(args):
     seed.seed_everything(420)
-    datamodule = datamodules.FashionMNISTDataModule(
-        data_dir="./data", num_workers=os.cpu_count()
+    # datamodule = datamodules.FashionMNISTDataModule(
+    #     data_dir="./data", num_workers=os.cpu_count(), batch_size=256
+    # )
+    datamodule = datamodules.ParityDatamodule(
+        path="./data/parity/",
+        num_workers=os.cpu_count(),
+        batch_size=256,
     )
     model = models.PonderNet(
         encoder=None,
@@ -32,6 +37,8 @@ def main(args):
         preds_reduction_method="ponder",
         out_dim=datamodule.num_classes,
         task="classification",
+        learning_rate=3e-4,
+        loss_beta=0.01,
     )
     trainer = pl.Trainer(
         accelerator="auto",
@@ -44,6 +51,7 @@ def main(args):
             ),
             LearningRateMonitor(logging_interval="epoch"),
         ],
+        # gradient_clip_val=0.25,
         deterministic=True,
         devices="auto",
         logger=[
@@ -61,7 +69,7 @@ def main(args):
     )
 
     trainer.fit(model, datamodule=datamodule)
-    trainer.test(model, datamodule=datamodule)
+    trainer.test(datamodule=datamodule)
 
 
 if __name__ == "__main__":

@@ -23,10 +23,11 @@ class PonderLoss(nn.Module):
         self.task_loss_fn = task_loss_fn
         self.beta = beta
         self.lambda_prior = lambda_prior
-        self.KL = nn.KLDivLoss(reduction="batchmean")
+        self.KL = nn.KLDivLoss(reduction="sum")
 
         prior = lambda_prior * (1 - lambda_prior) ** torch.arange(max_ponder_steps)
-        self.register_buffer("prior", prior)
+        prior = prior / prior.sum()
+        self.register_buffer("log_prior", prior.log())
 
     def forward(self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor):
         """
@@ -46,17 +47,13 @@ class PonderLoss(nn.Module):
             preds.view(
                 -1, preds.size(-1)
             ),  # View pred steps as individual classifications.
-            targets[
-                (torch.arange(targets.size(0)).repeat(n_steps))
-            ],  # Repeat targets as needed to match.
+            targets.repeat(n_steps),  # Repeat targets as needed to match.
             reduction="none",
         ).view(n_steps, batch_size)
-        l_rec = torch.einsum("ij,ij->j", p, task_losses).mean()
+        l_rec = (task_losses * p).sum(0).mean()
 
         # Regularization term
-        l_reg = self.beta * self.KL(
-            p.transpose(1, 0).log(),
-            self.prior[:n_steps].unsqueeze(0).expand(batch_size, n_steps),  # type: ignore
-        )
+        p_t = p.transpose(1, 0)
+        l_reg = self.KL(self.log_prior[:n_steps].expand_as(p_t), p_t)
 
-        return l_rec + l_reg
+        return l_rec, self.beta * l_reg

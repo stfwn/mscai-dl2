@@ -40,9 +40,11 @@ class ParityDatamodule(pl.LightningDataModule):
         )
 
     def setup(self, stage=None):
-        self.train_dataset = ParityDataset(
-            os.path.join(self.path, f"train_{self.problem_str}.pt")
-        )
+        train_path = os.path.join(self.path, f"train_{self.problem_str}.pt")
+        if not os.path.exists(train_path):
+            self.prepare_data()
+
+        self.train_dataset = ParityDataset(train_path)
         self.valid_dataset = ParityDataset(
             os.path.join(self.path, f"valid_{self.problem_str}.pt")
         )
