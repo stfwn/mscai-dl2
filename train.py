@@ -74,21 +74,18 @@ if __name__ == "__main__":
         "--step-function",
         type=str,
         choices=["bayesian_mlp", "mlp"],
-        default="bayesian_mlp",
     )
     parser.add_argument(
         "-t",
         "--task",
         type=str,
         choices=["classification", "bayesian_classification"],
-        default="bayesian_classification",
         help="Used to determine loss function during training.",
     )
     parser.add_argument(
         "-pr",
         "--preds-reduction-method",
         choices=["ponder", "bayesian"],
-        default="ponder",
         type=str,
         help="Method to use for reducing the predictions for each ponder step to a single value.",
     )
