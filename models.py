@@ -102,7 +102,7 @@ class PonderNet(LightningModule):
             raise ValueError(
                 f"Unknown preds reduction method: '{preds_reduction_method}'"
             )
-        self.preds_reduction_fn = preds_reduction_fn
+        self.reduce_preds = preds_reduction_fn
 
         # Optimizer
         self.optimizer_class = optim.Adam
@@ -116,19 +116,6 @@ class PonderNet(LightningModule):
         )
         return [optimizer], [{"scheduler": scheduler, "monitor": "loss/val"}]
 
-    # def reduce_preds(self, out_dict):
-    #     """
-    #     Get the final predictions where the network decided to halt.
-    #
-    #     Args:
-    #         preds: (step, batch, logit)
-    #         halted_at: (batch)
-    #
-    #     Returns:
-    #         (batch, logit)
-    #     """
-    #     return self.preds_reduction_fn(out_dict)
-
     @staticmethod
     def reduce_preds_ponder(out_dict):
         """
@@ -139,8 +126,8 @@ class PonderNet(LightningModule):
                 p: halting probability (ponder_steps, batch_size)
         :return: predictions (batch_size, logits)
         """
-        preds = out_dict['preds']
-        halted_at = out_dict['halted_at']
+        preds = out_dict["preds"]
+        halted_at = out_dict["halted_at"]
         return preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at]
 
     @staticmethod
@@ -154,8 +141,8 @@ class PonderNet(LightningModule):
         :return: predictions (batch_size, logits)
         """
         # return preds.permute(1, 2, 0) @ self.prior
-        preds = out_dict['preds']
-        p = out_dict['p']
+        preds = out_dict["preds"]
+        p = out_dict["p"]
         return torch.einsum("sbl,sb->bl", preds, p)
 
     def forward(self, x):
@@ -166,9 +153,7 @@ class PonderNet(LightningModule):
         x, targets = batch
         out_dict = self(x)
         loss = self.loss_function(out_dict, targets)
-        self.train_acc(
-            self.preds_reduction_fn(out_dict), targets
-        )
+        self.train_acc(self.reduce_preds(out_dict), targets)
         self.log("loss/train", loss)
         self.log("acc/train", self.train_acc, on_step=True, on_epoch=True)
         self.log(
@@ -190,9 +175,7 @@ class PonderNet(LightningModule):
         x, targets = batch
         out_dict = self(x)
         loss = self.loss_function(out_dict, targets)
-        self.val_acc(
-            self.preds_reduction_fn(out_dict), targets
-        )
+        self.val_acc(self.reduce_preds(out_dict), targets)
         self.log("loss/val", loss)
         self.log("acc/val", self.val_acc, on_step=True, on_epoch=True)
         return loss
@@ -201,9 +184,7 @@ class PonderNet(LightningModule):
         x, targets = batch
         out_dict = self(x)
         loss = self.loss_function(out_dict, targets)
-        self.test_acc(
-            self.preds_reduction_fn(out_dict), targets
-        )
+        self.test_acc(self.reduce_preds(out_dict), targets)
         self.log("loss/test", loss)
         self.log("acc/test", self.test_acc, on_step=False, on_epoch=True)
         return loss
