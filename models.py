@@ -116,18 +116,18 @@ class PonderNet(LightningModule):
         )
         return [optimizer], [{"scheduler": scheduler, "monitor": "loss/val"}]
 
-    def reduce_preds(self, out_dict):
-        """
-        Get the final predictions where the network decided to halt.
-
-        Args:
-            preds: (step, batch, logit)
-            halted_at: (batch)
-
-        Returns:
-            (batch, logit)
-        """
-        return self.preds_reduction_fn(out_dict)
+    # def reduce_preds(self, out_dict):
+    #     """
+    #     Get the final predictions where the network decided to halt.
+    #
+    #     Args:
+    #         preds: (step, batch, logit)
+    #         halted_at: (batch)
+    #
+    #     Returns:
+    #         (batch, logit)
+    #     """
+    #     return self.preds_reduction_fn(out_dict)
 
     @staticmethod
     def reduce_preds_ponder(out_dict):
@@ -167,7 +167,7 @@ class PonderNet(LightningModule):
         out_dict = self(x)
         loss = self.loss_function(out_dict, targets)
         self.train_acc(
-            self.reduce_preds(out_dict), targets
+            self.preds_reduction_fn(out_dict), targets
         )
         self.log("loss/train", loss)
         self.log("acc/train", self.train_acc, on_step=True, on_epoch=True)
@@ -191,7 +191,7 @@ class PonderNet(LightningModule):
         out_dict = self(x)
         loss = self.loss_function(out_dict, targets)
         self.val_acc(
-            self.reduce_preds(out_dict), targets
+            self.preds_reduction_fn(out_dict), targets
         )
         self.log("loss/val", loss)
         self.log("acc/val", self.val_acc, on_step=True, on_epoch=True)
@@ -202,7 +202,7 @@ class PonderNet(LightningModule):
         out_dict = self(x)
         loss = self.loss_function(out_dict, targets)
         self.test_acc(
-            self.reduce_preds(out_dict), targets
+            self.preds_reduction_fn(out_dict), targets
         )
         self.log("loss/test", loss)
         self.log("acc/test", self.test_acc, on_step=False, on_epoch=True)
