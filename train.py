@@ -4,10 +4,10 @@ from argparse import ArgumentParser
 
 # third party
 import pytorch_lightning as pl
+import torch
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from pytorch_lightning.utilities import seed
-import torch
 
 # first party
 import datamodules
@@ -29,7 +29,7 @@ def main(args):
             "ponder_epsilon": 0.05,
         },
         max_ponder_steps=10,
-        preds_reduction_method="bayesian",
+        preds_reduction_method="ponder",
         out_dim=datamodule.num_classes,
         task="classification",
     )
