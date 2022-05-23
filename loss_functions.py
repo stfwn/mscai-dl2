@@ -113,7 +113,7 @@ class PonderBayesianLoss(nn.Module):
             ],  # Repeat targets as needed to match.
             reduction="none",
         ).view(n_steps, batch_size)
-        l_rec = torch.log(torch.einsum("ij,ij->j", p, task_losses).mean())
+        l_rec = torch.einsum("ij,ij->j", p, task_losses).mean()
 
         # Regularization term
         l_reg = (
