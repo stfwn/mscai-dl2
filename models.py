@@ -139,8 +139,8 @@ class PonderNet(LightningModule):
         preds, p, halted_at = self(x)
         rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets)
         loss = rec_loss + reg_loss
-        self.log("rec_loss/train", rec_loss)
-        self.log("reg_loss/train", reg_loss)
+        self.log("loss/rec_train", rec_loss)
+        self.log("loss/reg_train", reg_loss)
 
         self.train_acc(self.reduce_preds(preds, halted_at), targets)
         self.log("acc/train", self.train_acc, on_step=False, on_epoch=True)
@@ -159,8 +159,8 @@ class PonderNet(LightningModule):
         preds, p, halted_at = self(x)
         rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets)
         loss = rec_loss + reg_loss
-        self.log("rec_loss/val", rec_loss)
-        self.log("reg_loss/val", reg_loss)
+        self.log("loss/rec_val", rec_loss)
+        self.log("loss/reg_val", reg_loss)
 
         self.val_acc(self.reduce_preds(preds, halted_at), targets)
         self.log("loss/val", loss)
@@ -179,8 +179,8 @@ class PonderNet(LightningModule):
         preds, p, halted_at = self(x)
         rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets)
         loss = rec_loss + reg_loss
-        self.log("rec_loss/test", rec_loss)
-        self.log("reg_loss/test", reg_loss)
+        self.log("loss/rec_test", rec_loss)
+        self.log("loss/reg_test", reg_loss)
 
         self.test_acc(self.reduce_preds(preds, halted_at), targets)
         self.log("loss/test", loss)
