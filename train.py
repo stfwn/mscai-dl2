@@ -21,8 +21,10 @@ def main(args):
     # )
     datamodule = datamodules.ParityDatamodule(
         path="./data/parity/",
+        num_problems = (10000, 1000, 1000),
         num_workers=os.cpu_count(),
         batch_size=256,
+        vector_size=10,
     )
     model = models.PonderNet(
         encoder=None,
