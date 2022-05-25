@@ -23,6 +23,7 @@ class ParityDatamodule(pl.LightningDataModule):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        self.save_hyperparameters()
 
         for item in inspect.signature(ParityDatamodule).parameters:
             setattr(self, item, eval(item))

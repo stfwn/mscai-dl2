@@ -23,7 +23,7 @@ class PonderLoss(nn.Module):
         self.task_loss_fn = task_loss_fn
         self.beta = beta
         self.lambda_prior = lambda_prior
-        self.KL = nn.KLDivLoss(reduction="sum")
+        self.KL = nn.KLDivLoss(reduction="batchmean")
 
         prior = lambda_prior * (1 - lambda_prior) ** torch.arange(max_ponder_steps)
         prior = prior / prior.sum()
