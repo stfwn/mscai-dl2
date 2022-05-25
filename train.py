@@ -21,26 +21,26 @@ def main(args):
     # )
     datamodule = datamodules.ParityDatamodule(
         path="./data/parity/",
-        num_problems = (10000, 1000, 1000),
+        num_problems=(10000, 1000, 1000),
         num_workers=os.cpu_count(),
         batch_size=256,
         vector_size=10,
     )
     model = models.PonderNet(
         encoder=None,
-        encoding_dim=torch.tensor(datamodule.dims).prod(),
-        step_function="mlp",
-        step_function_args={
-            "hidden_dims": [300, 200],
-            "state_dim": 100,
-            "ponder_epsilon": 0.05,
-        },
+        step_function="seq_rnn",
+        step_function_args=dict(
+            in_dim=1,  # torch.tensor(datamodule.dims).prod(),
+            out_dim=datamodule.num_classes,
+            state_dim=100,
+            # hidden_dims=[300, 200],
+        ),
         max_ponder_steps=10,
         preds_reduction_method="ponder",
-        out_dim=datamodule.num_classes,
         task="classification",
         learning_rate=3e-4,
         loss_beta=0.01,
+        ponder_epsilon=0.05,
     )
     trainer = pl.Trainer(
         accelerator="auto",
@@ -64,10 +64,12 @@ def main(args):
                 # log_graph=True,
             ),
             WandbLogger(
+                name=None,
                 project="mscai-dl2",
                 log_model=True,
             ),
         ],
+        max_epochs=50,
     )
 
     trainer.fit(model, datamodule=datamodule)
