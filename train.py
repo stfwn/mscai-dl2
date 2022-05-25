@@ -21,25 +21,27 @@ def main(args):
     # )
     datamodule = datamodules.ParityDatamodule(
         path="./data/parity/",
-        num_problems=(10000, 1000, 1000),
+        num_problems=(100000, 10000, 10000),
         num_workers=os.cpu_count(),
-        batch_size=256,
-        vector_size=10,
+        batch_size=128,
+        vector_size=20,
     )
     model = models.PonderNet(
         encoder=None,
-        step_function="seq_rnn",
+        step_function="rnn",
         step_function_args=dict(
-            in_dim=1,  # torch.tensor(datamodule.dims).prod(),
+            in_dim=torch.tensor(datamodule.dims).prod(),  # 1
             out_dim=datamodule.num_classes,
-            state_dim=100,
+            state_dim=128,
+            rnn_type="gru",
             # hidden_dims=[300, 200],
         ),
-        max_ponder_steps=10,
+        max_ponder_steps=20,
         preds_reduction_method="ponder",
         task="classification",
-        learning_rate=3e-4,
+        learning_rate=0.001,
         loss_beta=0.01,
+        lambda_prior=0.2,
         ponder_epsilon=0.05,
     )
     trainer = pl.Trainer(
@@ -53,7 +55,7 @@ def main(args):
             ),
             LearningRateMonitor(logging_interval="epoch"),
         ],
-        # gradient_clip_val=0.25,
+        gradient_clip_val=0.5,
         deterministic=True,
         devices="auto",
         logger=[

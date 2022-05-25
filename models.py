@@ -276,14 +276,23 @@ class PonderMLP(nn.Module):
 
 
 class PonderSequentialRNN(nn.Module):
-    def __init__(self, in_dim: int, out_dim: int, state_dim: int):
+    def __init__(
+        self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
+    ):
         super().__init__()
         self.out_dim = out_dim
         self.state_dim = state_dim
+        self.rnn_type = rnn_type.lower()
 
         total_out_dim = out_dim + 1
 
-        self.rnn = nn.GRU(
+        rnn_cls = {
+            "rnn": nn.RNN,
+            "gru": nn.GRU,
+            "lstm": nn.LSTM,
+        }[self.rnn_type]
+
+        self.rnn = rnn_cls(
             input_size=in_dim,
             hidden_size=state_dim,
             batch_first=True,
@@ -297,7 +306,10 @@ class PonderSequentialRNN(nn.Module):
         x = x.unsqueeze(-1)
 
         _, state = self.rnn(x, state)
-        y_hat_n, lambda_n = self.projection(state.squeeze(0)).tensor_split(
+        state = F.relu(state)
+        # LSTM state == (c_n, h_n)
+        projection_state = state if self.rnn_type != "lstm" else state[1]
+        y_hat_n, lambda_n = self.projection(projection_state.squeeze(0)).tensor_split(
             indices=(self.out_dim,),
             dim=1,
         )
@@ -306,14 +318,23 @@ class PonderSequentialRNN(nn.Module):
 
 
 class PonderRNN(nn.Module):
-    def __init__(self, in_dim: int, out_dim: int, state_dim: int):
+    def __init__(
+        self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
+    ):
         super().__init__()
         self.out_dim = out_dim
         self.state_dim = state_dim
+        self.rnn_type = rnn_type.lower()
 
         total_out_dim = out_dim + 1
 
-        self.rnn = nn.GRUCell(
+        rnn_cls = {
+            "rnn": nn.RNNCell,
+            "gru": nn.GRUCell,
+            "lstm": nn.LSTMCell,
+        }[self.rnn_type]
+
+        self.rnn = rnn_cls(
             input_size=in_dim,
             hidden_size=state_dim,
         )
@@ -323,8 +344,10 @@ class PonderRNN(nn.Module):
         )
 
     def forward(self, x, state=None):
-        state = self.rnn(x, state)
-        y_hat_n, lambda_n = self.projection(state).tensor_split(
+        state = F.relu(self.rnn(x, state))
+        # LSTM state == (c_n, h_n)
+        projection_state = state if self.rnn_type != "lstm" else state[1]
+        y_hat_n, lambda_n = self.projection(projection_state).tensor_split(
             indices=(self.out_dim,),
             dim=1,
         )
