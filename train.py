@@ -75,7 +75,7 @@ def main(args):
     )
 
     trainer.fit(model, datamodule=datamodule)
-    trainer.test(datamodule=datamodule)
+    trainer.test(ckpt_path="best", datamodule=datamodule)
 
 
 if __name__ == "__main__":
