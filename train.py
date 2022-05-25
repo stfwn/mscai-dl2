@@ -7,6 +7,7 @@ import pytorch_lightning as pl
 import torch
 from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
+from pytorch_lightning.utilities import seed
 
 # first party
 import datamodules
@@ -14,25 +15,34 @@ import models
 
 
 def main(args):
-    pl.seed_everything(420, workers=True)
-    datamodule = datamodules.FashionMNISTDataModule(
-        data_dir="./data", num_workers=args.num_workers
+    seed.seed_everything(420)
+    # datamodule = datamodules.FashionMNISTDataModule(
+    #     data_dir="./data", num_workers=os.cpu_count(), batch_size=256
+    # )
+    datamodule = datamodules.ParityDatamodule(
+        path="./data/parity/",
+        num_problems=(100000, 10000, 10000),
+        num_workers=os.cpu_count(),
+        batch_size=128,
+        vector_size=20,
     )
     model = models.PonderNet(
         encoder=None,
-        encoding_dim=torch.tensor(datamodule.dims).prod(),
-        step_function=args.step_function,
-        step_function_args={
-            "hidden_dims": [300, 200],
-            "state_dim": 100,
-            "ponder_epsilon": 0.05,
-        },
-        max_ponder_steps=10,
-        preds_reduction_method=args.preds_reduction_method,
-        out_dim=datamodule.num_classes,
-        learning_rate=args.learning_rate,
-        task=args.task,
-        loss_beta=args.loss_beta,
+        step_function="rnn",
+        step_function_args=dict(
+            in_dim=torch.tensor(datamodule.dims).prod(),  # 1
+            out_dim=datamodule.num_classes,
+            state_dim=128,
+            rnn_type="gru",
+            # hidden_dims=[300, 200],
+        ),
+        max_ponder_steps=20,
+        preds_reduction_method="ponder",
+        task="classification",
+        learning_rate=0.001,
+        loss_beta=0.01,
+        lambda_prior=0.2,
+        ponder_epsilon=0.05,
     )
     trainer = pl.Trainer(
         accelerator="auto",
@@ -45,6 +55,7 @@ def main(args):
             ),
             LearningRateMonitor(logging_interval="epoch"),
         ],
+        gradient_clip_val=0.5,
         deterministic=True,
         devices="auto",
         logger=[
@@ -52,16 +63,19 @@ def main(args):
                 "logs",
                 name=args.model_name,
                 default_hp_metric=False,
+                # log_graph=True,
             ),
             WandbLogger(
+                name=None,
                 project="mscai-dl2",
                 log_model=True,
             ),
         ],
+        max_epochs=50,
     )
 
     trainer.fit(model, datamodule=datamodule)
-    trainer.test(model, datamodule=datamodule)
+    trainer.test(datamodule=datamodule)
 
 
 if __name__ == "__main__":
@@ -69,43 +83,5 @@ if __name__ == "__main__":
     parser.add_argument(
         "-m", "--model-name", type=str, choices=["pondermlp"], default="pondermlp"
     )
-    parser.add_argument(
-        "-s",
-        "--step-function",
-        type=str,
-        choices=["bayesian-mlp", "mlp"],
-    )
-    parser.add_argument(
-        "-t",
-        "--task",
-        type=str,
-        choices=["classification"],
-        default="classification",
-        help="Used to determine reconstruction loss function.",
-    )
-    parser.add_argument(
-        "-pr",
-        "--preds-reduction-method",
-        choices=["ponder", "bayesian"],
-        type=str,
-        help="Method to use for reducing the predictions for each ponder step to a single value.",
-    )
-    parser.add_argument(
-        "--num-workers",
-        default=os.cpu_count(),
-        type=int,
-        help="Number of workers to use in the data loaders. To have a truly deterministic run, this has to be 0.",
-    )
-    parser.add_argument(
-        "-lb",
-        "--loss-beta",
-        default=0.01,
-        type=float,
-        help="Factor by which to multiply the regularization loss term",
-    )
-    parser.add_argument(
-        "-lr", "--learning-rate", default=3e-4, type=float, help="Learning rate."
-    )
-
     args = parser.parse_args()
     main(args)
