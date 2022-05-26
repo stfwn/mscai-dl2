@@ -114,7 +114,6 @@ class TinyImageNet200DataModule(LightningDataModule):
         samples_per_class = int(len(original_train_set) / self.num_classes)
         train_split = 1 - self.val_split
         train_chunk_size = int(samples_per_class * train_split)
-        val_chunk_size = int(samples_per_class * self.val_split)
         train_chunk_starts = range(0, len(original_train_set), samples_per_class)
         val_chunk_starts = range(
             train_chunk_size, len(original_train_set), samples_per_class
