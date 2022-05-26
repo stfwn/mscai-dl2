@@ -361,14 +361,12 @@ class CNNEncoder(nn.Module):
     def __init__(self, in_channels: int):
         super().__init__()
         self.layers = nn.Sequential(
-            *[
-                nn.Conv2d(in_channels=in_channels, out_channels=16, kernel_size=3),
-                nn.ReLU(),
-                nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3),
-                nn.ReLU(),
-                nn.MaxPool2d(kernel_size=2),
-                nn.Flatten(),
-            ]
+            nn.Conv2d(in_channels=in_channels, out_channels=16, kernel_size=3),
+            nn.ReLU(),
+            nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3),
+            nn.ReLU(),
+            nn.MaxPool2d(kernel_size=2),
+            nn.Flatten(),
         )
 
     def forward(self, x):
