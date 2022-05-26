@@ -13,9 +13,9 @@ from loss_functions import PonderBayesianLoss, PonderLoss
 class PonderNet(LightningModule):
     def __init__(
         self,
-        step_function: Literal["mlp", "rnn", "seq_rnn"],
+        step_function: Literal["mlp", "rnn", "seq_rnn", "bay_mlp"],
         step_function_args: dict,
-        task: str,
+        task: Literal["classification", "bayesian-classification"],
         max_ponder_steps: int,
         preds_reduction_method: Literal["ponder", "bayesian"] = "ponder",
         encoder: Optional[str] = None,
@@ -59,6 +59,7 @@ class PonderNet(LightningModule):
             "mlp": PonderMLP,
             "rnn": PonderRNN,
             "seq_rnn": PonderSequentialRNN,
+            "bay_mlp": PonderBayesianMLP,
         }.get(step_function)
         if not sf_class:
             raise ValueError(f"Unknown step function: '{step_function}'")
@@ -112,7 +113,7 @@ class PonderNet(LightningModule):
         )
         return [optimizer], [{"scheduler": scheduler, "monitor": "loss/val"}]
 
-    def reduce_preds(self, preds, halted_at):
+    def reduce_preds(self, preds, halted_at, p):
         """
         Get the final predictions where the network decided to halt.
 
@@ -123,10 +124,10 @@ class PonderNet(LightningModule):
         Returns:
             (batch, logit)
         """
-        return self.preds_reduction_fn(preds, halted_at)
+        return self.preds_reduction_fn(preds, halted_at, p)
 
     @staticmethod
-    def reduce_preds_ponder(preds, halted_at):
+    def reduce_preds_ponder(preds, halted_at, p):
         """
        Reduces predictons from multiple ponder steps to one prediction,
        using halted_at.
@@ -138,7 +139,7 @@ class PonderNet(LightningModule):
         return preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at]
 
     @staticmethod
-    def reduce_preds_bayesian(out_dict):
+    def reduce_preds_bayesian(preds, halted_at, p):
         """
         Reduces predictons from multiple ponder steps to one prediction,
         using weighted average.
@@ -147,8 +148,6 @@ class PonderNet(LightningModule):
                 p: halting probability (ponder_steps, batch_size)
         :return: predictions (batch_size, logits)
         """
-        preds = out_dict["preds"]
-        p = out_dict["p"]
         return torch.einsum("sbl,sb->bl", preds, p)
 
     def forward(self, x):
@@ -163,12 +162,13 @@ class PonderNet(LightningModule):
         prob_not_halted_so_far = 1
         halted_at = x.new_zeros(batch_size)
         y_hat = []
+        lambdas = []
 
         for n in range(1, self.hparams.max_ponder_steps + 1):
             # 1) Pass through model
             y_hat_n, state, lambda_n = self.step_function(x, state)
 
-            lambda_n = lambda_n.squeeze().sigmoid()
+            lambdas.append(lambda_n)
             y_hat.append(y_hat_n)
             p.append(prob_not_halted_so_far * lambda_n)
             prob_not_halted_so_far = prob_not_halted_so_far * (1 - lambda_n)
@@ -198,19 +198,34 @@ class PonderNet(LightningModule):
             torch.stack(y_hat),  # (step, batch, logit)
             p,  # (step, batch)
             (halted_at - 1).long(),  # (batch)
+            torch.stack(lambdas),  # (step, batch)
         )
 
     def training_step(self, batch, batch_idx):
         x, targets = batch
-        preds, p, halted_at = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets)
+        preds, p, halted_at, lambdas = self(x)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas)
         loss = rec_loss + reg_loss
         self.log("loss/rec_train", rec_loss)
         self.log("loss/reg_train", reg_loss)
 
-        self.train_acc(self.reduce_preds(preds, halted_at), targets)
+        self.train_acc(self.reduce_preds(preds, halted_at, p), targets)
         self.log("acc/train", self.train_acc, on_step=False, on_epoch=True)
         self.log("loss/train", loss)
+
+        lambdas = lambdas.float()
+        self.log(
+            "lambda/first/train",
+            lambdas[0, :].mean(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
+            "lambda/last/train",
+            lambdas[-1, :].mean(),
+            on_step=True,
+            on_epoch=True,
+        )
 
         halted_at = halted_at.float()
         self.log("halted_at/mean/train", halted_at.mean(), on_step=True, on_epoch=True)
@@ -222,15 +237,29 @@ class PonderNet(LightningModule):
 
     def validation_step(self, batch, batch_idx):
         x, targets = batch
-        preds, p, halted_at = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets)
+        preds, p, halted_at, lambdas = self(x)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas)
         loss = rec_loss + reg_loss
         self.log("loss/rec_val", rec_loss)
         self.log("loss/reg_val", reg_loss)
 
-        self.val_acc(self.reduce_preds(preds, halted_at), targets)
+        self.val_acc(self.reduce_preds(preds, halted_at, p), targets)
         self.log("loss/val", loss)
         self.log("acc/val", self.val_acc, on_step=False, on_epoch=True)
+
+        lambdas = lambdas.float()
+        self.log(
+            "lambda/first/val",
+            lambdas[0, :].mean(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
+            "lambda/last/val",
+            lambdas[-1, :].mean(),
+            on_step=True,
+            on_epoch=True,
+        )
 
         halted_at = halted_at.float()
         self.log("halted_at/mean/val", halted_at.mean(), on_step=True, on_epoch=True)
@@ -242,13 +271,13 @@ class PonderNet(LightningModule):
 
     def test_step(self, batch, batch_idx):
         x, targets = batch
-        preds, p, halted_at = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets)
+        preds, p, halted_at, lambdas = self(x)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas)
         loss = rec_loss + reg_loss
         self.log("loss/rec_test", rec_loss)
         self.log("loss/reg_test", reg_loss)
 
-        self.test_acc(self.reduce_preds(preds, halted_at), targets)
+        self.test_acc(self.reduce_preds(preds, halted_at, p), targets)
         self.log("loss/test", loss)
         self.log("acc/test", self.test_acc, on_step=False, on_epoch=True)
 
@@ -301,6 +330,8 @@ class PonderMLP(nn.Module):
             dim=1,
         )
 
+        lambda_n = lambda_n.squeeze().sigmoid()
+
         return y_hat_n, state, lambda_n
 
 
@@ -343,6 +374,8 @@ class PonderSequentialRNN(nn.Module):
             dim=1,
         )
 
+        lambda_n = lambda_n.squeeze().sigmoid()
+
         return y_hat_n, state, lambda_n
 
 
@@ -381,10 +414,10 @@ class PonderRNN(nn.Module):
             dim=1,
         )
 
+        lambda_n = lambda_n.squeeze().sigmoid()
+
         return y_hat_n, state, lambda_n
 
-
-# TODO: Needs to be refactored a lot
 class PonderBayesianMLP(nn.Module):
     def __init__(
         self,
@@ -392,9 +425,6 @@ class PonderBayesianMLP(nn.Module):
         hidden_dims: list[int],
         out_dim: int,
         state_dim: int,
-        max_ponder_steps: int,
-        ponder_epsilon: float,
-        allow_early_return: bool = True,
     ):
         """
         Args:
@@ -407,9 +437,6 @@ class PonderBayesianMLP(nn.Module):
         self.hidden_dims = hidden_dims
         self.out_dim = out_dim
         self.state_dim = state_dim
-        self.max_ponder_steps = max_ponder_steps
-        self.ponder_epsilon = ponder_epsilon
-        self.allow_early_return = allow_early_return
 
         total_out_dim = (
             out_dim + state_dim + 2
@@ -423,23 +450,15 @@ class PonderBayesianMLP(nn.Module):
         else:
             self.layers = nn.Sequential(nn.Linear(in_dim + state_dim, total_out_dim))
 
-    def forward(self, x):
+    def forward(self, x, state=None):
         batch_size = x.size(0)
         x = x.view(batch_size, -1)
 
-        # State that transfers across steps
-        state = x.new_zeros(batch_size, self.state_dim)
+        if state is None:
+            # Create initial state
+            state = x.new_zeros(batch_size, self.state_dim)
 
-        lambdas = []
-        p = []  # Probabilities of halting at each step.
-        cum_p_n = x.new_zeros(batch_size)  # Cumulative probability of halting.
-        prob_not_halted_so_far = 1
-        halted_at = x.new_zeros(batch_size)
-        preds = []
-
-        for n in range(1, self.max_ponder_steps + 1):
-            # 1) Pass through model
-            preds_n, state, lambda_params = self.layers(
+        y_hat_n, state, lambda_params = self.layers(
                 torch.concat((x, state), dim=1)
             ).tensor_split(
                 indices=(
@@ -449,39 +468,17 @@ class PonderBayesianMLP(nn.Module):
                 dim=1,
             )
 
-            # 2) Sample lambda_n from beta-distribution
-            lambda_params = F.relu(lambda_params) + 1e-7
-            alpha, beta = lambda_params[:, 0], lambda_params[:, 1]
-            distribution = dist_beta.Beta(alpha, beta)
-            lambda_n = distribution.rsample()
+        # 2) Sample lambda_n from beta-distribution
+        lambda_params = F.relu(lambda_params) + 1e-7
+        alpha, beta = lambda_params[:, 0], lambda_params[:, 1]
+        distribution = dist_beta.Beta(alpha, beta)
+        lambda_n = distribution.rsample()
 
-            # 3) Store preds and probabilities
-            preds.append(preds_n)
-            lambdas.append(lambda_n)
-            p.append(prob_not_halted_so_far * lambda_n)
-            prob_not_halted_so_far = prob_not_halted_so_far * (1 - lambda_n)
-            cum_p_n += p[n - 1]
+        return y_hat_n, state, lambda_n
 
-            # 4) Update halted_at where needed (one-liner courtesy of jankrepl on GitHub)
-            halted_at = (n * (halted_at == 0) * lambda_n.bernoulli()).max(halted_at)
-
-            # If the probability is over epsilon we always stop.
-            halted_at[
-                (cum_p_n > (1 - self.ponder_epsilon)).bool() & (halted_at == 0)
-            ] = n
-
-            if self.allow_early_return and halted_at.all():
-                break
-
-        # Last step should be used if halting prob never reached above 1-epsilon
-        halted_at[halted_at == 0] = self.max_ponder_steps
-        lambdas_stacked = torch.stack(lambdas)
-        p_stacked = torch.stack(p)  # (step, batch)
-        preds_stacked = torch.stack(preds)  # (step, batch, logit)
-
-        return {
-            "halted_at": (halted_at - 1).long(),  # (batch) (zero-indexed)
-            "lambdas": lambdas_stacked,  # (step, batch)
-            "p": p_stacked,  # (step, batch)
-            "preds": preds_stacked,  # (step, batch, logit)
-        }
+        # return y_hat_n, state, lambda_n,  {
+        #     "halted_at": (halted_at - 1).long(),  # (batch) (zero-indexed)
+        #     "lambdas": lambdas_stacked,  # (step, batch)
+        #     "p": p_stacked,  # (step, batch)
+        #     "preds": preds_stacked,  # (step, batch, logit)
+        # }

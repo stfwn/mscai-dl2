@@ -30,7 +30,7 @@ class PonderLoss(nn.Module):
         prior = prior / prior.sum()
         self.register_buffer("log_prior", prior.log())
 
-    def forward(self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor):
+    def forward(self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor, *args):
         """
         Args:
             `preds`: Predictions of shape (ponder_steps, batch_size, logits)
@@ -83,7 +83,7 @@ class PonderBayesianLoss(nn.Module):
 
         self.prior = dist_beta.Beta(beta_prior[0], beta_prior[1])
 
-    def forward(self, out_dict: dict, targets: Tensor):
+    def forward(self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor, lambdas: Tensor):
         """
         Args:
             `preds`: Predictions of shape (ponder_steps, batch_size, logits)
@@ -94,7 +94,6 @@ class PonderBayesianLoss(nn.Module):
             `targets`: Targets of shape (batch_size)
 
         """
-        preds, p, lambdas = out_dict["preds"], out_dict["p"], out_dict["lambdas"]
 
         n_steps, batch_size, _ = preds.shape
 
@@ -120,4 +119,4 @@ class PonderBayesianLoss(nn.Module):
             .mean()
         )  # Sum over the number of steps, then mean over the batch.
 
-        return l_rec + self.scale_reg * l_reg
+        return l_rec, self.scale_reg * l_reg
