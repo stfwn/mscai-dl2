@@ -161,7 +161,7 @@ class TinyImageNet200DataModule(LightningDataModule):
         return DataLoader(
             self.val,
             batch_size=self.batch_size,
-            shuffle=True,
+            shuffle=False,
             drop_last=True,
             pin_memory=self.pin_memory,
             num_workers=self.num_workers,
