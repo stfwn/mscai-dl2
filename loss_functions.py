@@ -112,8 +112,8 @@ class PonderBayesianLoss(nn.Module):
         # Regularization term
         l_reg = (
             self.KL(
-                lambdas.transpose(1, 0).log(),
                 self.prior.rsample(sample_shape=(batch_size, n_steps)).to(lambdas.device),  # type: ignore
+                lambdas.transpose(1, 0).log(),
             )
             .sum(1)
             .mean()
