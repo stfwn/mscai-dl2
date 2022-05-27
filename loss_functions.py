@@ -64,7 +64,7 @@ class PonderBayesianLoss(nn.Module):
     def __init__(
         self,
         task_loss_fn: Callable,
-        beta_prior: tuple,
+        beta_prior: tuple[float, float],
         max_ponder_steps: int,
         scale_reg: float,
     ):
