@@ -5,6 +5,7 @@ import torch.nn.functional as F
 import torchmetrics
 from pytorch_lightning import LightningModule
 from torch import nn, optim
+import torchvision
 
 from loss_functions import PonderLoss
 
@@ -17,7 +18,7 @@ class PonderNet(LightningModule):
         task: str,
         max_ponder_steps: int,
         preds_reduction_method: Literal["ponder", "bayesian"] = "ponder",
-        encoder: Optional[str] = None,
+        encoder: Optional[Literal["efficientnet"]] = None,
         encoder_args: Optional[dict] = None,
         learning_rate: float = 3e-4,
         lambda_prior: float = 0.2,
@@ -47,8 +48,12 @@ class PonderNet(LightningModule):
 
         # Encoder
         if encoder:
-            raise NotImplementedError
-            self.encoder = {}[encoder](**encoder_args)
+            encoder_class = {
+                "efficientnet": EfficientNetEncoder,
+            }.get(encoder)
+            if not encoder_class:
+                raise ValueError(f"Unknown encoder: '{encoder}'")
+            self.encoder = encoder_class(**encoder_args)
         else:
             self.encoder = lambda x: x  # type: ignore
 
@@ -353,3 +358,19 @@ class PonderRNN(nn.Module):
         )
 
         return y_hat_n, state, lambda_n
+
+
+class EfficientNetEncoder(nn.Module):
+    def __init__(self, variant: int):
+        assert 0 <= variant <= 7
+        super().__init__()
+        self.model = getattr(
+            torchvision.models,
+            f"efficientnet_b{variant}",
+        )(pretrained=True, stochastic_depth_prob=0)
+        self.model.classifier = nn.Identity()
+        for param in self.model.parameters():
+            param.requires_grad = False
+
+    def forward(self, x):
+        return self.model(x)
