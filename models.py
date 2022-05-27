@@ -18,7 +18,7 @@ class PonderNet(LightningModule):
         task: str,
         max_ponder_steps: int,
         preds_reduction_method: Literal["ponder", "bayesian"] = "ponder",
-        encoder: Optional[Literal["cnn", "efficientnet"]] = None,
+        encoder: Optional[Literal["efficientnet"]] = None,
         encoder_args: Optional[dict] = None,
         learning_rate: float = 3e-4,
         lambda_prior: float = 0.2,
@@ -49,7 +49,6 @@ class PonderNet(LightningModule):
         # Encoder
         if encoder:
             encoder_class = {
-                "cnn": CNNEncoder,
                 "efficientnet": EfficientNetEncoder,
             }.get(encoder)
             if not encoder_class:
@@ -359,22 +358,6 @@ class PonderRNN(nn.Module):
         )
 
         return y_hat_n, state, lambda_n
-
-
-class CNNEncoder(nn.Module):
-    def __init__(self, in_channels: int):
-        super().__init__()
-        self.layers = nn.Sequential(
-            nn.Conv2d(in_channels=in_channels, out_channels=16, kernel_size=3),
-            nn.ReLU(),
-            nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3),
-            nn.ReLU(),
-            nn.MaxPool2d(kernel_size=2),
-            nn.Flatten(),
-        )
-
-    def forward(self, x):
-        return self.layers(x)
 
 
 class EfficientNetEncoder(nn.Module):
