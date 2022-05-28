@@ -108,6 +108,11 @@ class PonderNet(LightningModule):
         # Optimizer
         self.optimizer_class = optim.Adam
 
+        if fixed_ponder_steps and loss_beta != 0:
+            raise ValueError(
+                "Using a fixed number of ponder steps with a non-zero KL multiplier (loss_beta) does not make sense."
+            )
+
     def configure_optimizers(self):
         optimizer = self.optimizer_class(
             params=self.parameters(), lr=self.hparams.learning_rate
@@ -184,12 +189,15 @@ class PonderNet(LightningModule):
 
         # Last step should be used if halting prob never reached above 1-epsilon
         halted_at[halted_at == 0] = max_steps
-        if self.hparams.fixed_ponder_steps:
-            halted_at[:] = self.hparams.fixed_ponder_steps
 
         # Normalize p so it's an actual distribution
         p = torch.stack(p)
         p = p / p.sum(0)
+
+        if self.hparams.fixed_ponder_steps:
+            halted_at[:] = self.hparams.fixed_ponder_steps
+            p[:-1, :] = 0
+            p[-1, :] = 1
 
         return (
             torch.stack(y_hat),  # (step, batch, logit)
