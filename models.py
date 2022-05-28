@@ -24,6 +24,7 @@ class PonderNet(LightningModule):
         lambda_prior: float = 0.2,
         loss_beta: float = 0.01,
         ponder_epsilon: float = 0.05,
+        fixed_ponder_steps: int = 0,
     ):
         """
         Args:
@@ -37,6 +38,14 @@ class PonderNet(LightningModule):
                 - `bayesian`: use the weighted average of the predictions at
                   every step, where the weights are decided by the geometric
                   prior, parameterized as in the loss.
+
+            fixed_ponder_steps: One-indexed int to set an exact number of steps
+                that the network should ponder for. This overrides halting
+                probabilities and max ponder steps. It's useful for configuring
+                baseline experiments.
+
+                - 0 (default): Don't fix the number of steps.
+                - Positive int: Ponder for exactly this number of steps.
         """
         super().__init__()
         self.save_hyperparameters()
@@ -135,6 +144,7 @@ class PonderNet(LightningModule):
 
     def forward(self, x):
         batch_size = x.size(0)
+        max_steps = self.hparams.fixed_ponder_steps or (self.hparams.max_ponder_steps)
         state = None  # State that transfers across steps
 
         x = self.encoder(x)
@@ -146,7 +156,7 @@ class PonderNet(LightningModule):
         halted_at = x.new_zeros(batch_size)
         y_hat = []
 
-        for n in range(1, self.hparams.max_ponder_steps + 1):
+        for n in range(1, max_steps + 1):
             # 1) Pass through model
             y_hat_n, state, lambda_n = self.step_function(x, state)
 
@@ -165,12 +175,17 @@ class PonderNet(LightningModule):
                     (cum_p_n > (1 - self.hparams.ponder_epsilon)), (halted_at == 0)
                 )
             ] = n
-
-            if self.allow_early_return and halted_at.all():
+            if (
+                self.allow_early_return
+                and halted_at.all()
+                and not self.hparams.fixed_ponder_steps
+            ):
                 break
 
         # Last step should be used if halting prob never reached above 1-epsilon
-        halted_at[halted_at == 0] = self.hparams.max_ponder_steps
+        halted_at[halted_at == 0] = max_steps
+        if self.hparams.fixed_ponder_steps:
+            halted_at[:] = self.hparams.fixed_ponder_steps
 
         # Normalize p so it's an actual distribution
         p = torch.stack(p)
