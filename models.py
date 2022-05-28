@@ -59,7 +59,7 @@ class PonderNet(LightningModule):
             self.encoder = lambda x: x  # type: ignore
 
         # Step function
-        self.allow_early_return = preds_reduction_method == "ponder"
+        self.allow_early_return = preds_reduction_method == "ponder" and "bayesian" not in task
         sf_class = {
             "mlp": PonderMLP,
             "rnn": PonderRNN,
@@ -299,12 +299,6 @@ class PonderMLP(nn.Module):
     def __init__(
             self, in_dim: int, hidden_dims: list[int], out_dim: int, state_dim: int
     ):
-        """
-        Args:
-            allow_early_return: Allow returning once all the halting variables
-                from the batch landed on halt. Set this to `False` if your
-                preds reduction method requires preds from all steps.
-        """
         super().__init__()
         self.in_dim = in_dim
         self.hidden_dims = hidden_dims
@@ -432,12 +426,6 @@ class PonderBayesianMLP(nn.Module):
             out_dim: int,
             state_dim: int,
     ):
-        """
-        Args:
-            allow_early_return: Allow returning once all the halting variables
-                from the batch landed on halt. Set this to `False` if your
-                preds reduction method requires preds from all steps.
-        """
         super().__init__()
         self.in_dim = in_dim
         self.hidden_dims = hidden_dims

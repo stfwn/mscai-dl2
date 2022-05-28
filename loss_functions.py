@@ -105,7 +105,7 @@ class PonderBayesianLoss(nn.Module):
             `halted_at`: Indices of steps where each sample actually stopped of
                 shape (batch)
             `targets`: Targets of shape (batch_size)
-
+            'lambdas': Lambdas of shape (step, batch_size)
         """
         assert "lambdas" in kwargs, "Must provide lambdas!"
 
@@ -119,7 +119,7 @@ class PonderBayesianLoss(nn.Module):
                 -1, preds.size(-1)
             ),  # View pred steps as individual classifications.
             targets[
-                (torch.arange(targets.size(0)).repeat(n_steps))
+                torch.arange(targets.size(0)).repeat(n_steps)
             ],  # Repeat targets as needed to match.
             reduction="none",
         ).view(n_steps, batch_size)
