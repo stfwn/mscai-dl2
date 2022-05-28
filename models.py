@@ -4,6 +4,7 @@ import torch
 import torch.distributions.beta as dist_beta
 import torch.nn.functional as F
 import torchmetrics
+import torchvision
 from pytorch_lightning import LightningModule
 from torch import nn, optim
 
@@ -12,18 +13,18 @@ from loss_functions import PonderBayesianLoss, PonderLoss
 
 class PonderNet(LightningModule):
     def __init__(
-            self,
-            step_function: Literal["mlp", "rnn", "seq_rnn", "bay_mlp"],
-            step_function_args: dict,
-            task: Literal["classification", "bayesian-classification"],
-            max_ponder_steps: int,
-            preds_reduction_method: Literal["ponder", "bayesian"] = "ponder",
-            encoder: Optional[str] = None,
-            encoder_args: Optional[dict] = None,
-            learning_rate: float = 3e-4,
-            lambda_prior: float = 0.2,
-            loss_beta: float = 0.01,
-            ponder_epsilon: float = 0.05,
+        self,
+        step_function: Literal["mlp", "rnn", "seq_rnn", "bay_mlp"],
+        step_function_args: dict,
+        task: Literal["classification", "bayesian-classification"],
+        max_ponder_steps: int,
+        preds_reduction_method: Literal["ponder", "bayesian"] = "ponder",
+        encoder: Optional[Literal["efficientnet"]] = None,
+        encoder_args: Optional[dict] = None,
+        learning_rate: float = 3e-4,
+        lambda_prior: float = 0.2,
+        loss_beta: float = 0.01,
+        ponder_epsilon: float = 0.05,
     ):
         """
         Args:
@@ -48,8 +49,12 @@ class PonderNet(LightningModule):
 
         # Encoder
         if encoder:
-            raise NotImplementedError
-            self.encoder = {}[encoder](**encoder_args)
+            encoder_class = {
+                "efficientnet": EfficientNetEncoder,
+            }.get(encoder)
+            if not encoder_class:
+                raise ValueError(f"Unknown encoder: '{encoder}'")
+            self.encoder = encoder_class(**encoder_args)
         else:
             self.encoder = lambda x: x  # type: ignore
 
@@ -82,7 +87,7 @@ class PonderNet(LightningModule):
                     max_ponder_steps=max_ponder_steps,
                     scale_reg=loss_beta,
                 )
-            )
+            ),
         }.get(task)
         if not lf_class:
             raise NotImplementedError(f"Unknown task: '{task}'")
@@ -129,12 +134,12 @@ class PonderNet(LightningModule):
     @staticmethod
     def reduce_preds_ponder(preds, halted_at, p):
         """
-       Reduces predictons from multiple ponder steps to one prediction,
-       using halted_at.
-       out_dict: dictionary containing:
-               preds: (ponder_steps, batch_size, logits)
-               p: halting probability (ponder_steps, batch_size)
-       :return: predictions (batch_size, logits)
+        Reduces predictons from multiple ponder steps to one prediction,
+        using halted_at.
+        out_dict: dictionary containing:
+                preds: (ponder_steps, batch_size, logits)
+                p: halting probability (ponder_steps, batch_size)
+        :return: predictions (batch_size, logits)
         """
         return preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at]
 
@@ -477,9 +482,18 @@ class PonderBayesianMLP(nn.Module):
 
         return y_hat_n, state, lambda_n
 
-        # return y_hat_n, state, lambda_n,  {
-        #     "halted_at": (halted_at - 1).long(),  # (batch) (zero-indexed)
-        #     "lambdas": lambdas_stacked,  # (step, batch)
-        #     "p": p_stacked,  # (step, batch)
-        #     "preds": preds_stacked,  # (step, batch, logit)
-        # }
+
+class EfficientNetEncoder(nn.Module):
+    def __init__(self, variant: int):
+        assert 0 <= variant <= 7
+        super().__init__()
+        self.model = getattr(
+            torchvision.models,
+            f"efficientnet_b{variant}",
+        )(pretrained=True, stochastic_depth_prob=0)
+        self.model.classifier = nn.Identity()
+        for param in self.model.parameters():
+            param.requires_grad = False
+
+    def forward(self, x):
+        return self.model(x)
