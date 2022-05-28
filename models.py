@@ -157,6 +157,50 @@ class PonderNet(LightningModule):
         """
         return torch.einsum("sbl,sb->bl", preds, p)
 
+    @staticmethod
+    def reduce_preds_bayesian_sampling(preds, halted_at, p, beta_params):
+        """
+        Reduces predictons from multiple ponder steps to one prediction,
+        using mode of multiple sampled predictions.
+        (sampling lambda --> halted_at --> prediction)
+        :param preds:
+        :param halted_at:
+        :param p:
+        :param alpha:
+        :param beta: ()
+        :return: predictions (batch_size)
+        """
+        alpha, beta = beta_params
+
+        # sample lambdas
+        lambdas = dist_beta.Beta(alpha, beta).sample()  # get tensor (step, batch)
+        print(lambdas.shape)
+
+        # calculate p
+        p_not_halted_so_far = torch.ones(lambdas.shape)
+        p = torch.zeros(lambdas.shape)
+
+        #for lambda_n in lambdas:
+            # p.append(prob_not_halted_so_far * lambda_n)
+            # prob_not_halted_so_far = prob_not_halted_so_far * (1 - lambda_n)
+            # cum_p_n += p[n - 1]
+            #
+            # # Update halted_at where needed (one-liner courtesy of jankrepl on GitHub)
+            # halted_at = (n * (halted_at == 0) * lambda_n.bernoulli()).max(halted_at)
+            #
+            # # If the probability is over epsilon we always stop.
+            # halted_at[
+            #     torch.logical_and(
+            #         (cum_p_n > (1 - self.hparams.ponder_epsilon)), (halted_at == 0)
+            #     )
+            # ] = n
+
+
+        # sample halted at
+
+        #
+
+
     def forward(self, x):
         batch_size = x.size(0)
         state = None  # State that transfers across steps
@@ -221,7 +265,7 @@ class PonderNet(LightningModule):
         self.log("loss/rec_train", rec_loss)
         self.log("loss/reg_train", reg_loss)
 
-        self.train_acc(self.reduce_preds(preds, halted_at, p), targets)
+        self.train_acc(self.reduce_preds(preds, halted_at, p, beta_params), targets)
         self.log("acc/train", self.train_acc, on_step=False, on_epoch=True)
         self.log("loss/train", loss)
 
@@ -267,7 +311,7 @@ class PonderNet(LightningModule):
         self.log("loss/rec_val", rec_loss)
         self.log("loss/reg_val", reg_loss)
 
-        self.val_acc(self.reduce_preds(preds, halted_at, p), targets)
+        self.val_acc(self.reduce_preds(preds, halted_at, p, beta_params), targets)
         self.log("loss/val", loss)
         self.log("acc/val", self.val_acc, on_step=False, on_epoch=True)
 
@@ -313,7 +357,7 @@ class PonderNet(LightningModule):
         self.log("loss/rec_test", rec_loss)
         self.log("loss/reg_test", reg_loss)
 
-        self.test_acc(self.reduce_preds(preds, halted_at, p), targets)
+        self.test_acc(self.reduce_preds(preds, halted_at, p, beta_params), targets)
         self.log("loss/test", loss)
         self.log("acc/test", self.test_acc, on_step=False, on_epoch=True)
 
