@@ -80,7 +80,7 @@ def save_parity_data(
             vector_size, num_problems[0], 1, vector_size // 2
         )
         valid_data = generate_parity_data(
-            vector_size, num_problems[1], vector_size // 2 + 1, vector_size
+            vector_size, num_problems[1], 1, vector_size // 2
         )
         test_data = generate_parity_data(
             vector_size, num_problems[2], vector_size // 2 + 1, vector_size
