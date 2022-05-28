@@ -1,6 +1,7 @@
 from typing import Literal, Optional
 
 import torch
+import torch.distributions.geometric as dist_geometric
 import torch.distributions.beta as dist_beta
 import torch.nn.functional as F
 import torchmetrics
@@ -18,7 +19,7 @@ class PonderNet(LightningModule):
         step_function_args: dict,
         task: Literal["classification", "bayesian-classification"],
         max_ponder_steps: int,
-        preds_reduction_method: Literal["ponder", "bayesian"] = "ponder",
+        preds_reduction_method: Literal["ponder", "bayesian", "bayesian_sampling"] = "ponder",
         encoder: Optional[Literal["efficientnet"]] = None,
         encoder_args: Optional[dict] = None,
         learning_rate: float = 3e-4,
@@ -99,6 +100,7 @@ class PonderNet(LightningModule):
         preds_reduction_fn = {
             "ponder": self.reduce_preds_ponder,
             "bayesian": self.reduce_preds_bayesian,
+            "bayesian_sampling": self.reduce_preds_bayesian_sampling,
         }.get(preds_reduction_method)
         if not preds_reduction_fn:
             raise ValueError(
@@ -118,7 +120,7 @@ class PonderNet(LightningModule):
         )
         return [optimizer], [{"scheduler": scheduler, "monitor": "loss/val"}]
 
-    def reduce_preds(self, preds, halted_at, p):
+    def reduce_preds(self, preds, halted_at, p, beta_params):
         """
         Get the final predictions where the network decided to halt.
 
@@ -129,7 +131,7 @@ class PonderNet(LightningModule):
         Returns:
             (batch, logit)
         """
-        return self.preds_reduction_fn(preds, halted_at, p)
+        return self.preds_reduction_fn(preds, halted_at, p, beta_params)
 
     @staticmethod
     def reduce_preds_ponder(preds, halted_at, p):
