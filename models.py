@@ -3,6 +3,7 @@ from typing import Literal, Optional
 import torch
 import torch.distributions.geometric as dist_geometric
 import torch.distributions.beta as dist_beta
+import torch.distributions.categorical as dist_categorical
 import torch.nn.functional as F
 import torchmetrics
 import torchvision
@@ -170,6 +171,7 @@ class PonderNet(LightningModule):
         :param beta: ()
         :return: predictions (batch_size)
         """
+        n_samples = 100  # TODO: Make hyperparam
         alpha, beta = beta_params
 
         # 1) Sample lambdas
@@ -200,26 +202,26 @@ class PonderNet(LightningModule):
 
         # Index the preds using the halting_at which is of size (batch_size, sample)
 
-        #for lambda_n in lambdas:
-            # p.append(prob_not_halted_so_far * lambda_n)
-            # prob_not_halted_so_far = prob_not_halted_so_far * (1 - lambda_n)
-            # cum_p_n += p[n - 1]
-            #
-            # # Update halted_at where needed (one-liner courtesy of jankrepl on GitHub)
-            # halted_at = (n * (halted_at == 0) * lambda_n.bernoulli()).max(halted_at)
-            #
-            # # If the probability is over epsilon we always stop.
-            # halted_at[
-            #     torch.logical_and(
-            #         (cum_p_n > (1 - self.hparams.ponder_epsilon)), (halted_at == 0)
-            #     )
-            # ] = n
+        #final_preds = preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at]  # (batch_size, num_classes)
 
+        # 4) Get prediction scores of each halted step
+        final_preds = torch.zeros((n_samples, preds.size(1), preds.size(2))).to(preds.device)  # (samples, batch_size, num_classes)
 
-        # sample halted at
+        # Unvectorized code
+        # TODO: Please help vectorizing tbis
+        for i in range(n_samples):
+            # preds.permute(1, 2, 0) -> (batch_size, num_classes, ponder_steps)
+            final_preds[i, :, :] = preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at[:,i]]
 
-        #
+        # Our idea: but doesn't work
+        # final_preds = preds.permute(1, 2, 0)[torch.arange(n_samples).expand(preds.size(1), -1), :, halted_at] # (batch_size, steps, num_classes)
 
+        # 5) Sample the class predictions:
+        final_preds_logits = final_preds.log_softmax(dim=2)  # (sample, batch_size, num_classes)
+        sampled_class_preds = torch.distributions.categorical.Categorical(logits=final_preds_logits.permute(1, 0, 2))\
+            .sample().to(preds.device)  # (batch_size, samples)
+
+        return sampled_class_preds.mode(1)[0]  # (batch_size)
 
     def forward(self, x):
         batch_size = x.size(0)

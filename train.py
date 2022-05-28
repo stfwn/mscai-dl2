@@ -33,13 +33,13 @@ def main(args):
             in_dim=torch.tensor(datamodule.dims).prod(),  # 1
             out_dim=datamodule.num_classes,
             state_dim=100,
-            hidden_dims=(300, 200),
+            hidden_dims=[300, 200],
         ),
         max_ponder_steps=20,
-        preds_reduction_method="ponder",
+        preds_reduction_method="bayesian_sampling",
         task="bayesian-classification",
         learning_rate=0.001,
-        loss_beta=0.01,
+        scale_reg=0.01,
         lambda_prior=0.2,
         ponder_epsilon=0.05,
     )
