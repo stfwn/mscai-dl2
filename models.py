@@ -12,18 +12,18 @@ from loss_functions import PonderBayesianLoss, PonderLoss
 
 class PonderNet(LightningModule):
     def __init__(
-        self,
-        step_function: Literal["mlp", "rnn", "seq_rnn", "bay_mlp"],
-        step_function_args: dict,
-        task: Literal["classification", "bayesian-classification"],
-        max_ponder_steps: int,
-        preds_reduction_method: Literal["ponder", "bayesian"] = "ponder",
-        encoder: Optional[str] = None,
-        encoder_args: Optional[dict] = None,
-        learning_rate: float = 3e-4,
-        lambda_prior: float = 0.2,
-        loss_beta: float = 0.01,
-        ponder_epsilon: float = 0.05,
+            self,
+            step_function: Literal["mlp", "rnn", "seq_rnn", "bay_mlp"],
+            step_function_args: dict,
+            task: Literal["classification", "bayesian-classification"],
+            max_ponder_steps: int,
+            preds_reduction_method: Literal["ponder", "bayesian"] = "ponder",
+            encoder: Optional[str] = None,
+            encoder_args: Optional[dict] = None,
+            learning_rate: float = 3e-4,
+            lambda_prior: float = 0.2,
+            loss_beta: float = 0.01,
+            ponder_epsilon: float = 0.05,
     ):
         """
         Args:
@@ -79,8 +79,8 @@ class PonderNet(LightningModule):
                 lambda: PonderBayesianLoss(
                     task_loss_fn=F.cross_entropy,
                     beta_prior=(10, 10),
-                    max_ponder_steps = max_ponder_steps,
-                    scale_reg = loss_beta,
+                    max_ponder_steps=max_ponder_steps,
+                    scale_reg=loss_beta,
                 )
             )
         }.get(task)
@@ -204,7 +204,7 @@ class PonderNet(LightningModule):
     def training_step(self, batch, batch_idx):
         x, targets = batch
         preds, p, halted_at, lambdas = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas)
         loss = rec_loss + reg_loss
         self.log("loss/rec_train", rec_loss)
         self.log("loss/reg_train", reg_loss)
@@ -238,7 +238,7 @@ class PonderNet(LightningModule):
     def validation_step(self, batch, batch_idx):
         x, targets = batch
         preds, p, halted_at, lambdas = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas)
         loss = rec_loss + reg_loss
         self.log("loss/rec_val", rec_loss)
         self.log("loss/reg_val", reg_loss)
@@ -272,7 +272,7 @@ class PonderNet(LightningModule):
     def test_step(self, batch, batch_idx):
         x, targets = batch
         preds, p, halted_at, lambdas = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas)
         loss = rec_loss + reg_loss
         self.log("loss/rec_test", rec_loss)
         self.log("loss/reg_test", reg_loss)
@@ -292,7 +292,7 @@ class PonderNet(LightningModule):
 
 class PonderMLP(nn.Module):
     def __init__(
-        self, in_dim: int, hidden_dims: list[int], out_dim: int, state_dim: int
+            self, in_dim: int, hidden_dims: list[int], out_dim: int, state_dim: int
     ):
         """
         Args:
@@ -337,7 +337,7 @@ class PonderMLP(nn.Module):
 
 class PonderSequentialRNN(nn.Module):
     def __init__(
-        self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
+            self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
     ):
         super().__init__()
         self.out_dim = out_dim
@@ -381,7 +381,7 @@ class PonderSequentialRNN(nn.Module):
 
 class PonderRNN(nn.Module):
     def __init__(
-        self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
+            self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
     ):
         super().__init__()
         self.out_dim = out_dim
@@ -418,13 +418,14 @@ class PonderRNN(nn.Module):
 
         return y_hat_n, state, lambda_n
 
+
 class PonderBayesianMLP(nn.Module):
     def __init__(
-        self,
-        in_dim: int,
-        hidden_dims: list[int],
-        out_dim: int,
-        state_dim: int,
+            self,
+            in_dim: int,
+            hidden_dims: list[int],
+            out_dim: int,
+            state_dim: int,
     ):
         """
         Args:
@@ -439,7 +440,7 @@ class PonderBayesianMLP(nn.Module):
         self.state_dim = state_dim
 
         total_out_dim = (
-            out_dim + state_dim + 2
+                out_dim + state_dim + 2
         )  # add two extra items for dimension for alpha and beta
         if hidden_dims:
             layers: list[nn.Module] = [nn.Linear(in_dim + state_dim, hidden_dims[0])]
@@ -459,14 +460,14 @@ class PonderBayesianMLP(nn.Module):
             state = x.new_zeros(batch_size, self.state_dim)
 
         y_hat_n, state, lambda_params = self.layers(
-                torch.concat((x, state), dim=1)
-            ).tensor_split(
-                indices=(
-                    self.out_dim,
-                    self.out_dim + self.state_dim,
-                ),
-                dim=1,
-            )
+            torch.concat((x, state), dim=1)
+        ).tensor_split(
+            indices=(
+                self.out_dim,
+                self.out_dim + self.state_dim,
+            ),
+            dim=1,
+        )
 
         # 2) Sample lambda_n from beta-distribution
         lambda_params = F.relu(lambda_params) + 1e-7

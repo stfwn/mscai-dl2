@@ -30,7 +30,7 @@ class PonderLoss(nn.Module):
         prior = prior / prior.sum()
         self.register_buffer("log_prior", prior.log())
 
-    def forward(self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor, *args):
+    def forward(self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor, **kwargs):
         """
         Args:
             `preds`: Predictions of shape (ponder_steps, batch_size, logits)
@@ -83,7 +83,7 @@ class PonderBayesianLoss(nn.Module):
 
         self.prior = dist_beta.Beta(beta_prior[0], beta_prior[1])
 
-    def forward(self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor, lambdas: Tensor):
+    def forward(self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor, **kwargs):
         """
         Args:
             `preds`: Predictions of shape (ponder_steps, batch_size, logits)
@@ -94,6 +94,9 @@ class PonderBayesianLoss(nn.Module):
             `targets`: Targets of shape (batch_size)
 
         """
+        assert "lambdas" in kwargs, "Must provide lambdas!"
+
+        lambdas = kwargs["lambdas"]
 
         n_steps, batch_size, _ = preds.shape
 
@@ -112,8 +115,8 @@ class PonderBayesianLoss(nn.Module):
         # Regularization term
         l_reg = (
             self.KL(
-                self.prior.rsample(sample_shape=(batch_size, n_steps)).to(lambdas.device),  # type: ignore
-                lambdas.transpose(1, 0).log(),
+                self.prior.rsample(sample_shape=(batch_size, n_steps)).to(lambdas.device).log(),  # type: ignore
+                lambdas.transpose(1, 0),
             )
             .sum(1)
             .mean()
