@@ -2,7 +2,7 @@ from typing import Callable
 
 import torch
 import torch.distributions.beta as dist_beta
-from torch import Tensor, nn
+from torch import Tensor, nn, lgamma
 
 
 class PonderLoss(nn.Module):
@@ -110,6 +110,7 @@ class PonderBayesianLoss(nn.Module):
         assert "lambdas" in kwargs, "Must provide lambdas!"
 
         lambdas = kwargs["lambdas"]
+        alphas, betas = kwargs["beta_params"]
 
         n_steps, batch_size, _ = preds.shape
 
@@ -126,13 +127,31 @@ class PonderBayesianLoss(nn.Module):
         l_rec = torch.einsum("ij,ij->j", p, task_losses).mean()
 
         # Regularization term
+        # TODO : Make hyperparameter to decide if you want to use approximation
+        # l_reg = (
+        #     self.KL(
+        #         self.prior.rsample(sample_shape=(batch_size, n_steps)).to(lambdas.device).log(),
+        #         lambdas.transpose(1, 0),  # type: ignore
+        #     )
+        #     .sum(1)
+        #     .mean()
+        # )  # Sum over the number of steps, then mean over the batch.
+
+        def lbeta(x, y):
+            # As derivable from:
+            # https://en.wikipedia.org/wiki/Beta_function#:~:text=.%5B1%5D-,A%20key%20property,-of%20the%20beta
+            return lgamma(x) + lgamma(y) - lgamma(x + y)
+
+        a_prime, b_prime = torch.Tensor(self.beta_prior).to(lambdas.device)
+        a, b = alphas, betas
+
+        # Analytically computing KL-divergence, according to formula in
+        # https://en.wikipedia.org/wiki/Beta_distribution#:~:text=The%20relative%20entropy%2C%20or%20Kullback%E2%80%93Leibler%20divergence%20DKL(X1%20%7C%7C%20X2)
         l_reg = (
-            self.KL(
-                self.prior.rsample(sample_shape=(batch_size, n_steps)).to(lambdas.device).log(),  # type: ignore
-                lambdas.transpose(1, 0),
-            )
-            .sum(1)
+            (lbeta(a_prime, b_prime) - lbeta(a, b) + (a - a_prime) * torch.digamma(a) +
+             (b - b_prime) * torch.digamma(b) + (a_prime - a + b_prime - b) * torch.digamma(a + b))
+            .sum(0)
             .mean()
-        )  # Sum over the number of steps, then mean over the batch.
+        )
 
         return l_rec, self.scale_reg * l_reg

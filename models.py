@@ -168,10 +168,14 @@ class PonderNet(LightningModule):
         halted_at = x.new_zeros(batch_size)
         y_hat = []
         lambdas = []
+        alphas, betas = [], []
 
         for n in range(1, self.hparams.max_ponder_steps + 1):
             # 1) Pass through model
-            y_hat_n, state, lambda_n = self.step_function(x, state)
+            y_hat_n, state, lambda_n, beta_params = self.step_function(x, state)
+
+            alphas.append(beta_params[0])
+            betas.append(beta_params[1])
 
             lambdas.append(lambda_n)
             y_hat.append(y_hat_n)
@@ -204,12 +208,13 @@ class PonderNet(LightningModule):
             p,  # (step, batch)
             (halted_at - 1).long(),  # (batch)
             torch.stack(lambdas),  # (step, batch)
+            (torch.stack(alphas), torch.stack(betas)),  # (step, batch), (step, batch)
         )
 
     def training_step(self, batch, batch_idx):
         x, targets = batch
-        preds, p, halted_at, lambdas = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas)
+        preds, p, halted_at, lambdas, beta_params = self(x)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas, beta_params=beta_params)
         loss = rec_loss + reg_loss
         self.log("loss/rec_train", rec_loss)
         self.log("loss/reg_train", reg_loss)
@@ -226,8 +231,20 @@ class PonderNet(LightningModule):
             on_epoch=True,
         )
         self.log(
+            "lambda/first/train_std",
+            lambdas[0, :].std(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
             "lambda/last/train",
             lambdas[-1, :].mean(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
+            "lambda/last/train_std",
+            lambdas[-1, :].std(),
             on_step=True,
             on_epoch=True,
         )
@@ -242,8 +259,8 @@ class PonderNet(LightningModule):
 
     def validation_step(self, batch, batch_idx):
         x, targets = batch
-        preds, p, halted_at, lambdas = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas)
+        preds, p, halted_at, lambdas, beta_params = self(x)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas, beta_params=beta_params)
         loss = rec_loss + reg_loss
         self.log("loss/rec_val", rec_loss)
         self.log("loss/reg_val", reg_loss)
@@ -288,8 +305,8 @@ class PonderNet(LightningModule):
 
     def test_step(self, batch, batch_idx):
         x, targets = batch
-        preds, p, halted_at, lambdas = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas)
+        preds, p, halted_at, lambdas, beta_params = self(x)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas, beta_params=beta_params)
         loss = rec_loss + reg_loss
         self.log("loss/rec_test", rec_loss)
         self.log("loss/reg_test", reg_loss)
@@ -344,7 +361,7 @@ class PonderMLP(nn.Module):
 
         lambda_n = lambda_n.squeeze().sigmoid()
 
-        return y_hat_n, state, lambda_n
+        return y_hat_n, state, lambda_n, None
 
 
 class PonderSequentialRNN(nn.Module):
@@ -388,7 +405,7 @@ class PonderSequentialRNN(nn.Module):
 
         lambda_n = lambda_n.squeeze().sigmoid()
 
-        return y_hat_n, state, lambda_n
+        return y_hat_n, state, lambda_n, None
 
 
 class PonderRNN(nn.Module):
@@ -428,7 +445,7 @@ class PonderRNN(nn.Module):
 
         lambda_n = lambda_n.squeeze().sigmoid()
 
-        return y_hat_n, state, lambda_n
+        return y_hat_n, state, lambda_n, None
 
 
 class PonderBayesianMLP(nn.Module):
@@ -481,7 +498,7 @@ class PonderBayesianMLP(nn.Module):
         distribution = dist_beta.Beta(alpha, beta)
         lambda_n = distribution.rsample()
 
-        return y_hat_n, state, lambda_n
+        return y_hat_n, state, lambda_n, (alpha, beta)
 
 
 class EfficientNetEncoder(nn.Module):
