@@ -163,7 +163,7 @@ class PonderNet(LightningModule):
         Reduces predictons from multiple ponder steps to one prediction,
         using mode of multiple sampled predictions.
         (sampling lambda --> halted_at --> prediction)
-        :param preds:
+        :param preds: (ponder_steps, batch_size, logits)
         :param halted_at:
         :param p:
         :param alpha:
@@ -172,13 +172,33 @@ class PonderNet(LightningModule):
         """
         alpha, beta = beta_params
 
-        # sample lambdas
-        lambdas = dist_beta.Beta(alpha, beta).sample()  # get tensor (step, batch)
-        print(lambdas.shape)
+        # 1) Sample lambdas
+        # lambdas = dist_beta.Beta(alpha, beta).sample()  # get tensor (step, batch)
+        lambdas = dist_beta.Beta(alpha, beta).sample((n_samples,)).to(preds.device).permute(1,0,2) # (step, sample, batch)
 
-        # calculate p
-        p_not_halted_so_far = torch.ones(lambdas.shape)
-        p = torch.zeros(lambdas.shape)
+        lambdas[-1,:,:] = 1
+
+        # 2) Calculate halting probabilities per step
+        p = []  # Probabilities of halting at each step.
+        prob_not_halted_so_far = 1 # Probabilities of not having halted so far.
+
+        for lambda_n in lambdas: # lambda_n (sample, batch)
+            p.append(prob_not_halted_so_far * lambda_n)
+            prob_not_halted_so_far = prob_not_halted_so_far * (1 - lambda_n)
+
+            # TODO: do we need this??
+            # # If the probability is over epsilon we always stop.
+            # halted_at[
+            #     torch.logical_and(
+            #         (cum_p_n > (1 - self.hparams.ponder_epsilon)), (halted_at == 0)
+            #     )
+            # ] = n
+
+        # 3) Sample the halted at step.
+        p = torch.stack(p).to(preds.device)  # (step, sample, batch_size)
+        halted_at = torch.distributions.categorical.Categorical(probs=p.permute(2, 1, 0)).sample().to(preds.device)  # (batch_size, sample)
+
+        # Index the preds using the halting_at which is of size (batch_size, sample)
 
         #for lambda_n in lambdas:
             # p.append(prob_not_halted_so_far * lambda_n)
