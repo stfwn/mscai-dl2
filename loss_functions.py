@@ -1,8 +1,8 @@
 from typing import Callable
 
 import torch
-from torch import nn, Tensor
 import torch.distributions.beta as dist_beta
+from torch import Tensor, nn
 
 
 class PonderLoss(nn.Module):
@@ -30,7 +30,9 @@ class PonderLoss(nn.Module):
         prior = prior / prior.sum()
         self.register_buffer("log_prior", prior.log())
 
-    def forward(self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor, *args):
+    def forward(
+        self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor, *args
+    ):
         """
         Args:
             `preds`: Predictions of shape (ponder_steps, batch_size, logits)
@@ -83,7 +85,14 @@ class PonderBayesianLoss(nn.Module):
 
         self.prior = dist_beta.Beta(beta_prior[0], beta_prior[1])
 
-    def forward(self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor, lambdas: Tensor):
+    def forward(
+        self,
+        preds: Tensor,
+        p: Tensor,
+        halted_at: Tensor,
+        targets: Tensor,
+        lambdas: Tensor,
+    ):
         """
         Args:
             `preds`: Predictions of shape (ponder_steps, batch_size, logits)

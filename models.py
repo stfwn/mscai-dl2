@@ -4,9 +4,9 @@ import torch
 import torch.distributions.beta as dist_beta
 import torch.nn.functional as F
 import torchmetrics
+import torchvision
 from pytorch_lightning import LightningModule
 from torch import nn, optim
-import torchvision
 
 from loss_functions import PonderBayesianLoss, PonderLoss
 
@@ -84,10 +84,10 @@ class PonderNet(LightningModule):
                 lambda: PonderBayesianLoss(
                     task_loss_fn=F.cross_entropy,
                     beta_prior=(10, 10),
-                    max_ponder_steps = max_ponder_steps,
-                    scale_reg = loss_beta,
+                    max_ponder_steps=max_ponder_steps,
+                    scale_reg=loss_beta,
                 )
-            )
+            ),
         }.get(task)
         if not lf_class:
             raise NotImplementedError(f"Unknown task: '{task}'")
@@ -134,12 +134,12 @@ class PonderNet(LightningModule):
     @staticmethod
     def reduce_preds_ponder(preds, halted_at, p):
         """
-       Reduces predictons from multiple ponder steps to one prediction,
-       using halted_at.
-       out_dict: dictionary containing:
-               preds: (ponder_steps, batch_size, logits)
-               p: halting probability (ponder_steps, batch_size)
-       :return: predictions (batch_size, logits)
+        Reduces predictons from multiple ponder steps to one prediction,
+        using halted_at.
+        out_dict: dictionary containing:
+                preds: (ponder_steps, batch_size, logits)
+                p: halting probability (ponder_steps, batch_size)
+        :return: predictions (batch_size, logits)
         """
         return preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at]
 
@@ -423,6 +423,7 @@ class PonderRNN(nn.Module):
 
         return y_hat_n, state, lambda_n
 
+
 class PonderBayesianMLP(nn.Module):
     def __init__(
         self,
@@ -464,14 +465,14 @@ class PonderBayesianMLP(nn.Module):
             state = x.new_zeros(batch_size, self.state_dim)
 
         y_hat_n, state, lambda_params = self.layers(
-                torch.concat((x, state), dim=1)
-            ).tensor_split(
-                indices=(
-                    self.out_dim,
-                    self.out_dim + self.state_dim,
-                ),
-                dim=1,
-            )
+            torch.concat((x, state), dim=1)
+        ).tensor_split(
+            indices=(
+                self.out_dim,
+                self.out_dim + self.state_dim,
+            ),
+            dim=1,
+        )
 
         # 2) Sample lambda_n from beta-distribution
         lambda_params = F.relu(lambda_params) + 1e-7

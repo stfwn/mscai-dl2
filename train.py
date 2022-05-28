@@ -16,9 +16,9 @@ import models
 
 def main(args):
     seed.seed_everything(420)
-    datamodule = datamodules.FashionMNISTDataModule(data_dir="./data",
-                                                    num_workers=4,
-                                                    batch_size=256)
+    datamodule = datamodules.FashionMNISTDataModule(
+        data_dir="./data", num_workers=4, batch_size=256
+    )
     # datamodule = datamodules.ParityDatamodule(
     #     path="./data/parity/",
     #     num_problems=(100000, 10000, 10000),
