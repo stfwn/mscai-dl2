@@ -260,8 +260,20 @@ class PonderNet(LightningModule):
             on_epoch=True,
         )
         self.log(
+            "lambda/first/train_std",
+            lambdas[0, :].std(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
             "lambda/last/val",
             lambdas[-1, :].mean(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
+            "lambda/last/train_std",
+            lambdas[-1, :].std(),
             on_step=True,
             on_epoch=True,
         )
