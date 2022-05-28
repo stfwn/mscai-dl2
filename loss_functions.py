@@ -9,20 +9,20 @@ class PonderLoss(nn.Module):
     def __init__(
         self,
         task_loss_fn: Callable,
-        beta: float,
+        scale_reg: float,
         lambda_prior: float,
         max_ponder_steps: int,
     ):
         """
         Args:
-            beta: Weight for the regularization loss term.
+            scale_reg: Weight for the regularization loss term.
             lambda_reg: Parameterizes the (Bernoulli) prior.
             task_loss_fn: Loss function for the actual task (e.g. MSE or CE).
             max_ponder_steps
         """
         super().__init__()
         self.task_loss_fn = task_loss_fn
-        self.beta = beta
+        self.scale_reg = scale_reg
         self.lambda_prior = lambda_prior
         self.KL = nn.KLDivLoss(reduction="batchmean")
 
@@ -63,7 +63,7 @@ class PonderLoss(nn.Module):
         p_t = p.transpose(1, 0)
         l_reg = self.KL(self.log_prior[:n_steps].expand_as(p_t), p_t)
 
-        return l_rec, self.beta * l_reg
+        return l_rec, self.scale_reg * l_reg
 
 
 class PonderBayesianLoss(nn.Module):

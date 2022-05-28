@@ -23,7 +23,7 @@ class PonderNet(LightningModule):
         encoder_args: Optional[dict] = None,
         learning_rate: float = 3e-4,
         lambda_prior: float = 0.2,
-        loss_beta: float = 0.01,
+        scale_reg: float = 0.01,
         ponder_epsilon: float = 0.05,
     ):
         """
@@ -75,7 +75,7 @@ class PonderNet(LightningModule):
             "classification": (
                 lambda: PonderLoss(
                     task_loss_fn=F.cross_entropy,
-                    beta=loss_beta,
+                    scale_reg=scale_reg,
                     lambda_prior=lambda_prior,
                     max_ponder_steps=max_ponder_steps,
                 )
@@ -85,7 +85,7 @@ class PonderNet(LightningModule):
                     task_loss_fn=F.cross_entropy,
                     beta_prior=(10, 10),
                     max_ponder_steps=max_ponder_steps,
-                    scale_reg=loss_beta,
+                    scale_reg=scale_reg,
                 )
             ),
         }.get(task)
@@ -314,6 +314,7 @@ class PonderMLP(nn.Module):
 
     def forward(self, x, state=None):
         batch_size = x.size(0)
+        x = x.view(batch_size, -1)
 
         if state is None:
             # Create initial state
