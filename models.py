@@ -146,7 +146,7 @@ class PonderNet(LightningModule):
                 p: halting probability (ponder_steps, batch_size)
         :return: predictions (batch_size, logits)
         """
-        return preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at]
+        return preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at], None
 
     @staticmethod
     def reduce_preds_bayesian(preds, halted_at, p):
@@ -223,7 +223,7 @@ class PonderNet(LightningModule):
         sampled_class_preds = torch.distributions.categorical.Categorical(logits=final_preds_logits.permute(1, 0, 2))\
             .sample().to(preds.device)  # (batch_size, samples)
 
-        return sampled_class_preds.mode(1)[0]  # (batch_size)
+        return sampled_class_preds.mode(1)[0], sampled_class_preds  # (batch_size), (batch_size, samples)
 
 
     def forward(self, x):
@@ -284,13 +284,19 @@ class PonderNet(LightningModule):
 
     def training_step(self, batch, batch_idx):
         x, targets = batch
-        preds, p, halted_at, lambdas, beta_params = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas, beta_params=beta_params)
+        preds, p, halted_at, lambdas, (alphas, betas) = self(x)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas))
         loss = rec_loss + reg_loss
         self.log("loss/rec_train", rec_loss)
         self.log("loss/reg_train", reg_loss)
 
-        self.train_acc(self.reduce_preds(preds, halted_at, p, beta_params), targets)
+        final_preds, samples_final_preds = self.reduce_preds(preds, halted_at, p, (alphas, betas))
+
+        if samples_final_preds is not None:
+            agreement_result = mode_agreement_metric(final_preds, samples_final_preds)
+            self.log("agreement_preds/train", agreement_result, on_step=True, on_epoch=True)
+
+        self.train_acc(final_preds, targets)
         self.log("acc/train", self.train_acc, on_step=False, on_epoch=True)
         self.log("loss/train", loss)
 
@@ -342,13 +348,19 @@ class PonderNet(LightningModule):
 
     def validation_step(self, batch, batch_idx):
         x, targets = batch
-        preds, p, halted_at, lambdas, beta_params = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas, beta_params=beta_params)
+        preds, p, halted_at, lambdas, (alphas, betas) = self(x)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas))
         loss = rec_loss + reg_loss
         self.log("loss/rec_val", rec_loss)
         self.log("loss/reg_val", reg_loss)
 
-        self.val_acc(self.reduce_preds(preds, halted_at, p, beta_params), targets)
+        final_preds, samples_final_preds = self.reduce_preds(preds, halted_at, p, (alphas, betas))
+
+        if samples_final_preds is not None:
+            agreement_result = mode_agreement_metric(final_preds, samples_final_preds)
+            self.log("agreement_preds/val", agreement_result, on_step=True, on_epoch=True)
+
+        self.val_acc(final_preds, targets)
         self.log("loss/val", loss)
         self.log("acc/val", self.val_acc, on_step=False, on_epoch=True)
 
@@ -388,13 +400,19 @@ class PonderNet(LightningModule):
 
     def test_step(self, batch, batch_idx):
         x, targets = batch
-        preds, p, halted_at, lambdas, beta_params = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas, beta_params=beta_params)
+        preds, p, halted_at, lambdas, (alphas, betas) = self(x)
+        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas))
         loss = rec_loss + reg_loss
         self.log("loss/rec_test", rec_loss)
         self.log("loss/reg_test", reg_loss)
 
-        self.test_acc(self.reduce_preds(preds, halted_at, p, beta_params), targets)
+        final_preds, samples_final_preds = self.reduce_preds(preds, halted_at, p, (alphas, betas))
+
+        if samples_final_preds is not None:
+            agreement_result = mode_agreement_metric(final_preds, samples_final_preds)
+            self.log("agreement_preds/test", agreement_result, on_step=True, on_epoch=True)
+
+        self.test_acc(final_preds, targets)
         self.log("loss/test", loss)
         self.log("acc/test", self.test_acc, on_step=False, on_epoch=True)
 
