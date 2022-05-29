@@ -12,6 +12,8 @@ from torch import nn, optim
 
 from loss_functions import PonderBayesianLoss, PonderLoss
 
+# First party
+from utils import *
 
 class PonderNet(LightningModule):
     def __init__(
@@ -156,7 +158,7 @@ class PonderNet(LightningModule):
                 p: halting probability (ponder_steps, batch_size)
         :return: predictions (batch_size, logits)
         """
-        return torch.einsum("sbl,sb->bl", preds, p)
+        return torch.einsum("sbl,sb->bl", preds, p), None
 
     @staticmethod
     def reduce_preds_bayesian_sampling(preds, halted_at, p, beta_params):
@@ -208,7 +210,7 @@ class PonderNet(LightningModule):
         final_preds = torch.zeros((n_samples, preds.size(1), preds.size(2))).to(preds.device)  # (samples, batch_size, num_classes)
 
         # Unvectorized code
-        # TODO: Please help vectorizing tbis
+        # TODO: Please help vectorizing this
         for i in range(n_samples):
             # preds.permute(1, 2, 0) -> (batch_size, num_classes, ponder_steps)
             final_preds[i, :, :] = preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at[:,i]]
@@ -222,6 +224,7 @@ class PonderNet(LightningModule):
             .sample().to(preds.device)  # (batch_size, samples)
 
         return sampled_class_preds.mode(1)[0]  # (batch_size)
+
 
     def forward(self, x):
         batch_size = x.size(0)
@@ -313,6 +316,18 @@ class PonderNet(LightningModule):
         self.log(
             "lambda/last/train_std",
             lambdas[-1, :].std(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
+            "beta_std/first/train",
+            calculate_beta_std(alphas[0],betas[0]).mean(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
+            "beta_std/last/train",
+            calculate_beta_std(alphas[-1],betas[-1]).mean(),
             on_step=True,
             on_epoch=True,
         )
