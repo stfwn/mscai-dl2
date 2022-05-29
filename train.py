@@ -46,7 +46,7 @@ def main(args):
     # )
     model = models.PonderNet(
         encoder=None,
-        step_function="bay_mlp",
+        step_function="bay_rnn",
         step_function_args=dict(
             in_dim=torch.tensor(datamodule.dims).prod(),  # 1
             out_dim=datamodule.num_classes,

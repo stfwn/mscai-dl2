@@ -18,7 +18,7 @@ from utils import *
 class PonderNet(LightningModule):
     def __init__(
         self,
-        step_function: Literal["mlp", "rnn", "seq_rnn", "bay_mlp"],
+        step_function: Literal["mlp", "rnn", "seq_rnn", "bay_mlp", "bay_rnn"],
         step_function_args: dict,
         task: Literal["classification", "bayesian-classification"],
         max_ponder_steps: int,
@@ -69,6 +69,7 @@ class PonderNet(LightningModule):
             "rnn": PonderRNN,
             "seq_rnn": PonderSequentialRNN,
             "bay_mlp": PonderBayesianMLP,
+            "bay_rnn": PonderBayesianRNN,
         }.get(step_function)
         if not sf_class:
             raise ValueError(f"Unknown step function: '{step_function}'")
