@@ -548,6 +548,48 @@ class PonderRNN(nn.Module):
 
         return y_hat_n, state, lambda_n, None
 
+class PonderBayesianRNN(nn.Module):
+    def __init__(
+            self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
+    ):
+        super().__init__()
+        self.out_dim = out_dim
+        self.state_dim = state_dim
+        self.rnn_type = rnn_type.lower()
+
+        total_out_dim = out_dim + 2
+
+        rnn_cls = {
+            "rnn": nn.RNNCell,
+            "gru": nn.GRUCell,
+            "lstm": nn.LSTMCell,
+        }[self.rnn_type]
+
+        self.rnn = rnn_cls(
+            input_size=in_dim,
+            hidden_size=state_dim,
+        )
+        self.projection = nn.Linear(
+            in_features=state_dim,
+            out_features=total_out_dim,
+        )
+
+    def forward(self, x, state=None):
+        state = F.relu(self.rnn(x, state))
+        # LSTM state == (c_n, h_n)
+        projection_state = state if self.rnn_type != "lstm" else state[1]
+        y_hat_n, lambda_params = self.projection(projection_state).tensor_split(
+            indices=(self.out_dim,),
+            dim=1,
+        )
+
+        # 2) Sample lambda_n from beta-distribution
+        lambda_params = F.relu(lambda_params) + 1e-7
+        alpha, beta = lambda_params[:, 0], lambda_params[:, 1]
+        distribution = dist_beta.Beta(alpha, beta)
+        lambda_n = distribution.rsample()
+
+        return y_hat_n, state, lambda_n, (alpha, beta)
 
 class PonderBayesianMLP(nn.Module):
     def __init__(
