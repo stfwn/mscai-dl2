@@ -373,7 +373,7 @@ class PonderNet(LightningModule):
             on_epoch=True,
         )
         self.log(
-            "lambda/first/train_std",
+            "lambda/first/valid_std",
             lambdas[0, :].std(),
             on_step=True,
             on_epoch=True,
@@ -385,8 +385,21 @@ class PonderNet(LightningModule):
             on_epoch=True,
         )
         self.log(
-            "lambda/last/train_std",
+            "lambda/last/valid_std",
             lambdas[-1, :].std(),
+            on_step=True,
+            on_epoch=True,
+        )
+
+        self.log(
+            "beta_std/first/valid",
+            calculate_beta_std(alphas[0], betas[0]).mean(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
+            "beta_std/last/valid",
+            calculate_beta_std(alphas[-1], betas[-1]).mean(),
             on_step=True,
             on_epoch=True,
         )
@@ -416,6 +429,44 @@ class PonderNet(LightningModule):
         self.test_acc(final_preds, targets)
         self.log("loss/test", loss)
         self.log("acc/test", self.test_acc, on_step=False, on_epoch=True)
+
+        lambdas = lambdas.float()
+        self.log(
+            "lambda/first/test",
+            lambdas[0, :].mean(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
+            "lambda/first/test_std",
+            lambdas[0, :].std(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
+            "lambda/last/test",
+            lambdas[-1, :].mean(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
+            "lambda/last/test_std",
+            lambdas[-1, :].std(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
+            "beta_std/first/test",
+            calculate_beta_std(alphas[0], betas[0]).mean(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
+            "beta_std/last/test",
+            calculate_beta_std(alphas[-1], betas[-1]).mean(),
+            on_step=True,
+            on_epoch=True,
+        )
 
         halted_at = halted_at.float()
         self.log("halted_at/mean/test", halted_at.mean(), on_step=True, on_epoch=True)
