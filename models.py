@@ -11,6 +11,7 @@ from pytorch_lightning import LightningModule
 from torch import nn, optim
 
 from loss_functions import PonderBayesianLoss, PonderLoss
+
 # First party
 from utils import *
 
@@ -20,7 +21,7 @@ class PonderNet(LightningModule):
         self,
         step_function: Literal["mlp", "rnn", "seq_rnn", "bay_mlp", "bay_rnn"],
         step_function_args: dict,
-        task: Literal["classification", "bayesian-classification"],
+        task: Literal["classification"],
         max_ponder_steps: int,
         preds_reduction_method: Literal[
             "ponder", "bayesian", "bayesian_sampling"
@@ -91,19 +92,20 @@ class PonderNet(LightningModule):
         # Loss
         lf_class = {
             "classification": (
-                lambda: PonderLoss(
+                (
+                    lambda: PonderBayesianLoss(
+                        task_loss_fn=F.cross_entropy,
+                        beta_prior=(10, 10),
+                        max_ponder_steps=max_ponder_steps,
+                        scale_reg=scale_reg,
+                    )
+                )
+                if step_function.startswith("bay_")
+                else lambda: PonderLoss(
                     task_loss_fn=F.cross_entropy,
                     scale_reg=scale_reg,
                     lambda_prior=lambda_prior,
                     max_ponder_steps=max_ponder_steps,
-                )
-            ),
-            "bayesian-classification": (
-                lambda: PonderBayesianLoss(
-                    task_loss_fn=F.cross_entropy,
-                    beta_prior=(10, 10),
-                    max_ponder_steps=max_ponder_steps,
-                    scale_reg=scale_reg,
                 )
             ),
         }.get(task)
@@ -128,9 +130,9 @@ class PonderNet(LightningModule):
         # Optimizer
         self.optimizer_class = optim.Adam
 
-        if fixed_ponder_steps and loss_beta != 0:
+        if fixed_ponder_steps and scale_reg != 0:
             raise ValueError(
-                "Using a fixed number of ponder steps with a non-zero KL multiplier (loss_beta) does not make sense."
+                "Using a fixed number of ponder steps with a non-zero KL multiplier (`scale_reg`) does not make sense."
             )
 
     def configure_optimizers(self):
