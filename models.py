@@ -15,6 +15,7 @@ from loss_functions import PonderBayesianLoss, PonderLoss
 # First party
 from utils import *
 
+
 class PonderNet(LightningModule):
     def __init__(
         self,
@@ -22,7 +23,9 @@ class PonderNet(LightningModule):
         step_function_args: dict,
         task: Literal["classification", "bayesian-classification"],
         max_ponder_steps: int,
-        preds_reduction_method: Literal["ponder", "bayesian", "bayesian_sampling"] = "ponder",
+        preds_reduction_method: Literal[
+            "ponder", "bayesian", "bayesian_sampling"
+        ] = "ponder",
         encoder: Optional[Literal["efficientnet"]] = None,
         encoder_args: Optional[dict] = None,
         learning_rate: float = 3e-4,
@@ -72,7 +75,9 @@ class PonderNet(LightningModule):
             self.encoder = lambda x: x  # type: ignore
 
         # Step function
-        self.allow_early_return = preds_reduction_method == "ponder" and "bayesian" not in task
+        self.allow_early_return = (
+            preds_reduction_method == "ponder" and "bayesian" not in task
+        )
         sf_class = {
             "mlp": PonderMLP,
             "rnn": PonderRNN,
@@ -193,15 +198,20 @@ class PonderNet(LightningModule):
 
         # 1) Sample lambdas
         # lambdas = dist_beta.Beta(alpha, beta).sample()  # get tensor (step, batch)
-        lambdas = dist_beta.Beta(alpha, beta).sample((n_samples,)).to(preds.device).permute(1,0,2) # (step, sample, batch)
+        lambdas = (
+            dist_beta.Beta(alpha, beta)
+            .sample((n_samples,))
+            .to(preds.device)
+            .permute(1, 0, 2)
+        )  # (step, sample, batch)
 
-        lambdas[-1,:,:] = 1
+        lambdas[-1, :, :] = 1
 
         # 2) Calculate halting probabilities per step
         p = []  # Probabilities of halting at each step.
-        prob_not_halted_so_far = 1 # Probabilities of not having halted so far.
+        prob_not_halted_so_far = 1  # Probabilities of not having halted so far.
 
-        for lambda_n in lambdas: # lambda_n (sample, batch)
+        for lambda_n in lambdas:  # lambda_n (sample, batch)
             p.append(prob_not_halted_so_far * lambda_n)
             prob_not_halted_so_far = prob_not_halted_so_far * (1 - lambda_n)
 
@@ -215,31 +225,48 @@ class PonderNet(LightningModule):
 
         # 3) Sample the halted at step.
         p = torch.stack(p).to(preds.device)  # (step, sample, batch_size)
-        halted_at = torch.distributions.categorical.Categorical(probs=p.permute(2, 1, 0)).sample().to(preds.device)  # (batch_size, sample)
+        halted_at = (
+            torch.distributions.categorical.Categorical(probs=p.permute(2, 1, 0))
+            .sample()
+            .to(preds.device)
+        )  # (batch_size, sample)
 
         # Index the preds using the halting_at which is of size (batch_size, sample)
 
-        #final_preds = preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at]  # (batch_size, num_classes)
+        # final_preds = preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at]  # (batch_size, num_classes)
 
         # 4) Get prediction scores of each halted step
-        final_preds = torch.zeros((n_samples, preds.size(1), preds.size(2))).to(preds.device)  # (samples, batch_size, num_classes)
+        final_preds = torch.zeros((n_samples, preds.size(1), preds.size(2))).to(
+            preds.device
+        )  # (samples, batch_size, num_classes)
 
         # Unvectorized code
         # TODO: Please help vectorizing this
         for i in range(n_samples):
             # preds.permute(1, 2, 0) -> (batch_size, num_classes, ponder_steps)
-            final_preds[i, :, :] = preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at[:,i]]
+            final_preds[i, :, :] = preds.permute(1, 2, 0)[
+                torch.arange(preds.size(1)), :, halted_at[:, i]
+            ]
 
         # Our idea: but doesn't work
         # final_preds = preds.permute(1, 2, 0)[torch.arange(n_samples).expand(preds.size(1), -1), :, halted_at] # (batch_size, steps, num_classes)
 
         # 5) Sample the class predictions:
-        final_preds_logits = final_preds.log_softmax(dim=2)  # (sample, batch_size, num_classes)
-        sampled_class_preds = torch.distributions.categorical.Categorical(logits=final_preds_logits.permute(1, 0, 2))\
-            .sample().to(preds.device)  # (batch_size, samples)
+        final_preds_logits = final_preds.log_softmax(
+            dim=2
+        )  # (sample, batch_size, num_classes)
+        sampled_class_preds = (
+            torch.distributions.categorical.Categorical(
+                logits=final_preds_logits.permute(1, 0, 2)
+            )
+            .sample()
+            .to(preds.device)
+        )  # (batch_size, samples)
 
-        return sampled_class_preds.mode(1)[0], sampled_class_preds  # (batch_size), (batch_size, samples)
-
+        return (
+            sampled_class_preds.mode(1)[0],
+            sampled_class_preds,
+        )  # (batch_size), (batch_size, samples)
 
     def forward(self, x):
         batch_size = x.size(0)
@@ -309,16 +336,22 @@ class PonderNet(LightningModule):
     def training_step(self, batch, batch_idx):
         x, targets = batch
         preds, p, halted_at, lambdas, (alphas, betas) = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas))
+        rec_loss, reg_loss = self.loss_function(
+            preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas)
+        )
         loss = rec_loss + reg_loss
         self.log("loss/rec_train", rec_loss)
         self.log("loss/reg_train", reg_loss)
 
-        final_preds, samples_final_preds = self.reduce_preds(preds, halted_at, p, (alphas, betas))
+        final_preds, samples_final_preds = self.reduce_preds(
+            preds, halted_at, p, (alphas, betas)
+        )
 
         if samples_final_preds is not None:
             agreement_result = mode_agreement_metric(final_preds, samples_final_preds)
-            self.log("agreement_preds/train", agreement_result, on_step=True, on_epoch=True)
+            self.log(
+                "agreement_preds/train", agreement_result, on_step=True, on_epoch=True
+            )
 
         self.train_acc(final_preds, targets)
         self.log("acc/train", self.train_acc, on_step=False, on_epoch=True)
@@ -351,13 +384,13 @@ class PonderNet(LightningModule):
         )
         self.log(
             "beta_std/first/train",
-            calculate_beta_std(alphas[0],betas[0]).mean(),
+            calculate_beta_std(alphas[0], betas[0]).mean(),
             on_step=True,
             on_epoch=True,
         )
         self.log(
             "beta_std/last/train",
-            calculate_beta_std(alphas[-1],betas[-1]).mean(),
+            calculate_beta_std(alphas[-1], betas[-1]).mean(),
             on_step=True,
             on_epoch=True,
         )
@@ -373,16 +406,22 @@ class PonderNet(LightningModule):
     def validation_step(self, batch, batch_idx):
         x, targets = batch
         preds, p, halted_at, lambdas, (alphas, betas) = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas))
+        rec_loss, reg_loss = self.loss_function(
+            preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas)
+        )
         loss = rec_loss + reg_loss
         self.log("loss/rec_val", rec_loss)
         self.log("loss/reg_val", reg_loss)
 
-        final_preds, samples_final_preds = self.reduce_preds(preds, halted_at, p, (alphas, betas))
+        final_preds, samples_final_preds = self.reduce_preds(
+            preds, halted_at, p, (alphas, betas)
+        )
 
         if samples_final_preds is not None:
             agreement_result = mode_agreement_metric(final_preds, samples_final_preds)
-            self.log("agreement_preds/val", agreement_result, on_step=True, on_epoch=True)
+            self.log(
+                "agreement_preds/val", agreement_result, on_step=True, on_epoch=True
+            )
 
         self.val_acc(final_preds, targets)
         self.log("loss/val", loss)
@@ -438,16 +477,22 @@ class PonderNet(LightningModule):
     def test_step(self, batch, batch_idx):
         x, targets = batch
         preds, p, halted_at, lambdas, (alphas, betas) = self(x)
-        rec_loss, reg_loss = self.loss_function(preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas))
+        rec_loss, reg_loss = self.loss_function(
+            preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas)
+        )
         loss = rec_loss + reg_loss
         self.log("loss/rec_test", rec_loss)
         self.log("loss/reg_test", reg_loss)
 
-        final_preds, samples_final_preds = self.reduce_preds(preds, halted_at, p, (alphas, betas))
+        final_preds, samples_final_preds = self.reduce_preds(
+            preds, halted_at, p, (alphas, betas)
+        )
 
         if samples_final_preds is not None:
             agreement_result = mode_agreement_metric(final_preds, samples_final_preds)
-            self.log("agreement_preds/test", agreement_result, on_step=True, on_epoch=True)
+            self.log(
+                "agreement_preds/test", agreement_result, on_step=True, on_epoch=True
+            )
 
         self.test_acc(final_preds, targets)
         self.log("loss/test", loss)
@@ -502,7 +547,7 @@ class PonderNet(LightningModule):
 
 class PonderMLP(nn.Module):
     def __init__(
-            self, in_dim: int, hidden_dims: list[int], out_dim: int, state_dim: int
+        self, in_dim: int, hidden_dims: list[int], out_dim: int, state_dim: int
     ):
         super().__init__()
         self.in_dim = in_dim
@@ -542,7 +587,7 @@ class PonderMLP(nn.Module):
 
 class PonderSequentialRNN(nn.Module):
     def __init__(
-            self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
+        self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
     ):
         super().__init__()
         self.out_dim = out_dim
@@ -586,7 +631,7 @@ class PonderSequentialRNN(nn.Module):
 
 class PonderRNN(nn.Module):
     def __init__(
-            self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
+        self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
     ):
         super().__init__()
         self.out_dim = out_dim
@@ -623,9 +668,10 @@ class PonderRNN(nn.Module):
 
         return y_hat_n, state, lambda_n, None
 
+
 class PonderBayesianRNN(nn.Module):
     def __init__(
-            self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
+        self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
     ):
         super().__init__()
         self.out_dim = out_dim
@@ -666,13 +712,14 @@ class PonderBayesianRNN(nn.Module):
 
         return y_hat_n, state, lambda_n, (alpha, beta)
 
+
 class PonderBayesianMLP(nn.Module):
     def __init__(
-            self,
-            in_dim: int,
-            hidden_dims: list[int],
-            out_dim: int,
-            state_dim: int,
+        self,
+        in_dim: int,
+        hidden_dims: list[int],
+        out_dim: int,
+        state_dim: int,
     ):
         super().__init__()
         self.in_dim = in_dim
@@ -681,7 +728,7 @@ class PonderBayesianMLP(nn.Module):
         self.state_dim = state_dim
 
         total_out_dim = (
-                out_dim + state_dim + 2
+            out_dim + state_dim + 2
         )  # add two extra items for dimension for alpha and beta
         if hidden_dims:
             layers: list[nn.Module] = [nn.Linear(in_dim + state_dim, hidden_dims[0])]

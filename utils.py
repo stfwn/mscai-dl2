@@ -19,4 +19,6 @@ def mode_agreement_metric(samples_mode, samples):
     :param samples: The samples. (batch_size, samples)
     :return: The normalized agreement between the samples and the mode. (float)
     """
-    return ((samples == samples_mode.unsqueeze(1)).float().sum(1) / samples.size(1)).mean()
+    return (
+        (samples == samples_mode.unsqueeze(1)).float().sum(1) / samples.size(1)
+    ).mean()

@@ -25,7 +25,7 @@ def main(args):
         num_workers=4,
         batch_size=512,
         vector_size=20,
-        extrapolate=True
+        extrapolate=True,
     )
     # For FashionMNIST:
     # model = models.PonderNet(

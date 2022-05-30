@@ -31,12 +31,8 @@ class PonderLoss(nn.Module):
         self.register_buffer("log_prior", prior.log())
 
     def forward(
-            self,
-            preds: Tensor,
-            p: Tensor,
-            halted_at: Tensor,
-            targets: Tensor,
-            **kwargs):
+        self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor, **kwargs
+    ):
         """
         Args:
             `preds`: Predictions of shape (ponder_steps, batch_size, logits)
@@ -90,13 +86,8 @@ class PonderBayesianLoss(nn.Module):
         self.prior = dist_beta.Beta(beta_prior[0], beta_prior[1])
 
     def forward(
-            self,
-            preds: Tensor,
-            p: Tensor,
-            halted_at: Tensor,
-            targets: Tensor,
-            **kwargs
-        ):
+        self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor, **kwargs
+    ):
         """
         Args:
             `preds`: Predictions of shape (ponder_steps, batch_size, logits)
@@ -148,8 +139,13 @@ class PonderBayesianLoss(nn.Module):
         # Analytically computing KL-divergence, according to formula in
         # https://en.wikipedia.org/wiki/Beta_distribution#:~:text=The%20relative%20entropy%2C%20or%20Kullback%E2%80%93Leibler%20divergence%20DKL(X1%20%7C%7C%20X2)
         l_reg = (
-            (lbeta(a_prime, b_prime) - lbeta(a, b) + (a - a_prime) * torch.digamma(a) +
-             (b - b_prime) * torch.digamma(b) + (a_prime - a + b_prime - b) * torch.digamma(a + b))
+            (
+                lbeta(a_prime, b_prime)
+                - lbeta(a, b)
+                + (a - a_prime) * torch.digamma(a)
+                + (b - b_prime) * torch.digamma(b)
+                + (a_prime - a + b_prime - b) * torch.digamma(a + b)
+            )
             .sum(0)
             .mean()
         )
