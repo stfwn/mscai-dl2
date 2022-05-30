@@ -1,5 +1,5 @@
 import os
-from itertools import accumulate, chain
+from itertools import chain
 from typing import Callable, Optional
 
 import torch

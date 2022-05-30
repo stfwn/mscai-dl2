@@ -1,9 +1,9 @@
 from typing import Literal, Optional
 
 import torch
-import torch.distributions.geometric as dist_geometric
 import torch.distributions.beta as dist_beta
 import torch.distributions.categorical as dist_categorical
+import torch.distributions.geometric as dist_geometric
 import torch.nn.functional as F
 import torchmetrics
 import torchvision
@@ -11,7 +11,6 @@ from pytorch_lightning import LightningModule
 from torch import nn, optim
 
 from loss_functions import PonderBayesianLoss, PonderLoss
-
 # First party
 from utils import *
 

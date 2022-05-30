@@ -2,7 +2,7 @@ from typing import Callable
 
 import torch
 import torch.distributions.beta as dist_beta
-from torch import Tensor, nn, lgamma
+from torch import Tensor, lgamma, nn
 
 
 class PonderLoss(nn.Module):
