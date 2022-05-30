@@ -542,6 +542,20 @@ class PonderNet(LightningModule):
         )
         return loss
 
+    def on_test_epoch_start(self) -> None:
+        self.test_epoch_start_time = torch.cuda.Event(enable_timing=True)
+        self.test_epoch_start_time.record()
+        return super().on_test_epoch_start()
+
+    def on_test_epoch_end(self) -> None:
+        out = super().on_test_epoch_end()
+        test_epoch_end_time = torch.cuda.Event(enable_timing=True)
+        test_epoch_end_time.record()
+        torch.cuda.synchronize()
+        curr_time = self.test_epoch_start_time.elapsed_time(test_epoch_end_time)
+        self.log("efficiency/test_time", curr_time)
+        return out
+
 
 class PonderMLP(nn.Module):
     def __init__(
