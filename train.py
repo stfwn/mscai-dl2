@@ -15,7 +15,7 @@ import models
 
 
 def main(args):
-    # seed.seed_everything(420)
+    seed.seed_everything(420)
     # datamodule = datamodules.FashionMNISTDataModule(
     #     data_dir="./data", num_workers=4, batch_size=256
     # )
