@@ -30,9 +30,11 @@ class PonderNet(LightningModule):
         encoder_args: Optional[dict] = None,
         learning_rate: float = 3e-4,
         lambda_prior: float = 0.2,
+        beta_prior: tuple[float, float] = (10, 10),
         scale_reg: float = 0.01,
         ponder_epsilon: float = 0.05,
         fixed_ponder_steps: int = 0,
+        **kwargs,  # Just to log them.
     ):
         """
         Args:
@@ -95,7 +97,7 @@ class PonderNet(LightningModule):
                 (
                     lambda: PonderBayesianLoss(
                         task_loss_fn=F.cross_entropy,
-                        beta_prior=(10, 10),
+                        beta_prior=beta_prior,
                         max_ponder_steps=max_ponder_steps,
                         scale_reg=scale_reg,
                     )
