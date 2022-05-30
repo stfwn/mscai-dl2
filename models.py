@@ -160,7 +160,7 @@ class PonderNet(LightningModule):
         return self.preds_reduction_fn(preds, halted_at, p, beta_params)
 
     @staticmethod
-    def reduce_preds_ponder(preds, halted_at, p):
+    def reduce_preds_ponder(preds, halted_at, p, beta_params):
         """
         Reduces predictons from multiple ponder steps to one prediction,
         using halted_at.
@@ -172,7 +172,7 @@ class PonderNet(LightningModule):
         return preds.permute(1, 2, 0)[torch.arange(preds.size(1)), :, halted_at], None
 
     @staticmethod
-    def reduce_preds_bayesian(preds, halted_at, p):
+    def reduce_preds_bayesian(preds, halted_at, p, beta_params):
         """
         Reduces predictons from multiple ponder steps to one prediction,
         using weighted average.
@@ -580,7 +580,7 @@ class PonderMLP(nn.Module):
 
         lambda_n = lambda_n.squeeze().sigmoid()
 
-        return y_hat_n, state, lambda_n, None
+        return y_hat_n, state, lambda_n, (torch.tensor(0), torch.tensor(0))
 
 
 class PonderSequentialRNN(nn.Module):
@@ -624,7 +624,7 @@ class PonderSequentialRNN(nn.Module):
 
         lambda_n = lambda_n.squeeze().sigmoid()
 
-        return y_hat_n, state, lambda_n, None
+        return y_hat_n, state, lambda_n, (torch.tensor(0), torch.tensor(0))
 
 
 class PonderRNN(nn.Module):
@@ -671,7 +671,7 @@ class PonderRNN(nn.Module):
 
         lambda_n = lambda_n.squeeze().sigmoid()
 
-        return y_hat_n, state, lambda_n, None
+        return y_hat_n, state, lambda_n, (torch.tensor(0), torch.tensor(0))
 
 
 class PonderBayesianRNN(nn.Module):
