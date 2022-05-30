@@ -13,7 +13,7 @@ from torch import nn, optim
 from loss_functions import PonderBayesianLoss, PonderLoss
 
 # First party
-from utils import *
+from utils import calculate_beta_std, mode_agreement_metric
 
 
 class PonderNet(LightningModule):
@@ -502,12 +502,7 @@ class PonderNet(LightningModule):
         self.log("acc/test", self.test_acc, on_step=False, on_epoch=True)
 
         lambdas = lambdas.float()
-        self.log(
-            "lambda/first/test",
-            lambdas[0, :].mean(),
-            on_step=True,
-            on_epoch=True,
-        )
+        self.log("lambda/first/test", lambdas[0, :].mean(), on_step=True, on_epoch=True)
         self.log(
             "lambda/first/test_std",
             lambdas[0, :].std(),
@@ -659,10 +654,17 @@ class PonderRNN(nn.Module):
         )
 
     def forward(self, x, state=None):
-        state = F.relu(self.rnn(x, state))
-        # LSTM state == (c_n, h_n)
-        projection_state = state if self.rnn_type != "lstm" else state[1]
-        y_hat_n, lambda_n = self.projection(projection_state).tensor_split(
+        batch_size = x.size(0)
+        x = x.view(batch_size, -1)
+
+        if self.rnn_type == "lstm":
+            # LSTM returns `(c_n, h_n)`
+            state = F.relu(self.rnn(x, state)[1])
+        else:
+            # RNN and GRU return `h_n`
+            state = F.relu(self.rnn(x, state))
+
+        y_hat_n, lambda_n = self.projection(state).tensor_split(
             indices=(self.out_dim,),
             dim=1,
         )
@@ -699,10 +701,17 @@ class PonderBayesianRNN(nn.Module):
         )
 
     def forward(self, x, state=None):
-        state = F.relu(self.rnn(x, state))
-        # LSTM state == (c_n, h_n)
-        projection_state = state if self.rnn_type != "lstm" else state[1]
-        y_hat_n, lambda_params = self.projection(projection_state).tensor_split(
+        batch_size = x.size(0)
+        x = x.view(batch_size, -1)
+
+        if self.rnn_type == "lstm":
+            # LSTM returns `(c_n, h_n)`
+            state = F.relu(self.rnn(x, state)[1])
+        else:
+            # RNN and GRU return `h_n`
+            state = F.relu(self.rnn(x, state))
+
+        y_hat_n, lambda_params = self.projection(state).tensor_split(
             indices=(self.out_dim,),
             dim=1,
         )
