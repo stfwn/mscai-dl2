@@ -70,13 +70,6 @@ class PonderBayesianLoss(nn.Module):
         max_ponder_steps: int,
         scale_reg: float,
     ):
-        """
-        Args:
-            # beta: Weight for the regularization loss term.
-            lambda_reg: Parameterizes the (Bernoulli) prior.
-            task_loss_fn: Loss function for the actual task (e.g. MSE or CE).
-            max_ponder_steps
-        """
         super().__init__()
         self.task_loss_fn = task_loss_fn
         self.beta_prior = beta_prior
