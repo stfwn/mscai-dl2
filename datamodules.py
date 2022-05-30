@@ -1,11 +1,11 @@
 import os
-from itertools import chain, accumulate
+from itertools import chain
 from typing import Callable, Optional
 
 import torch
-from torch.utils.data import DataLoader
 from pl_bolts.datamodules.fashion_mnist_datamodule import FashionMNISTDataModule
 from pytorch_lightning import LightningDataModule
+from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from torchvision.datasets.utils import download_and_extract_archive
 

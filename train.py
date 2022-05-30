@@ -15,35 +15,72 @@ import models
 
 
 def main(args):
-    seed.seed_everything(420)
+    # seed.seed_everything(420)
     # datamodule = datamodules.FashionMNISTDataModule(
-    #     data_dir="./data", num_workers=os.cpu_count(), batch_size=256
+    #     data_dir="./data", num_workers=4, batch_size=256
     # )
     datamodule = datamodules.ParityDatamodule(
         path="./data/parity/",
-        num_problems=(100000, 10000, 10000),
-        num_workers=os.cpu_count(),
-        batch_size=128,
+        num_problems=(500000, 10000, 10000),
+        num_workers=4,
+        batch_size=512,
         vector_size=20,
+        extrapolate=True,
     )
+    # For FashionMNIST:
+    # model = models.PonderNet(
+    #     encoder=None,
+    #     step_function="bay_mlp",
+    #     step_function_args=dict(
+    #         in_dim=torch.tensor(datamodule.dims).prod(),  # 1
+    #         out_dim=datamodule.num_classes,
+    #         state_dim=100,
+    #         hidden_dims=[300, 200],
+    #     ),
+    #     max_ponder_steps=20,
+    #     preds_reduction_method="bayesian_sampling",
+    #     task="bayesian-classification",
+    #     learning_rate=0.001,
+    #     scale_reg=0.01,
+    #     lambda_prior=0.2,
+    #     ponder_epsilon=0.05,
+    # )
     model = models.PonderNet(
         encoder=None,
-        step_function="rnn",
+        step_function="bay_rnn",
         step_function_args=dict(
             in_dim=torch.tensor(datamodule.dims).prod(),  # 1
             out_dim=datamodule.num_classes,
             state_dim=128,
             rnn_type="gru",
-            # hidden_dims=[300, 200],
         ),
         max_ponder_steps=20,
-        preds_reduction_method="ponder",
-        task="classification",
+        preds_reduction_method="bayesian_sampling",
+        task="bayesian-classification",
         learning_rate=0.001,
-        loss_beta=0.01,
+        scale_reg=0.00000001,
         lambda_prior=0.2,
         ponder_epsilon=0.05,
     )
+
+    # model = models.PonderNet(
+    #     encoder=None,
+    #     step_function="bay_mlp",
+    #     step_function_args=dict(
+    #         in_dim=torch.tensor(datamodule.dims).prod(),  # 1
+    #         out_dim=datamodule.num_classes,
+    #         state_dim=128,
+    #         hidden_dims=[],
+    #     ),
+    #     max_ponder_steps=20,
+    #     preds_reduction_method="bayesian_sampling",
+    #     task="bayesian-classification",
+    #     learning_rate=0.001,
+    #     scale_reg=0.01,
+    #     lambda_prior=0.2,
+    #     ponder_epsilon=0.05,
+    # )
+
     trainer = pl.Trainer(
         accelerator="auto",
         callbacks=[
