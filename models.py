@@ -395,6 +395,12 @@ class PonderNet(LightningModule):
             on_step=True,
             on_epoch=True,
         )
+        self.log(
+            "beta_std/all/train",
+            calculate_beta_std(alphas, betas).mean(),
+            on_step=True,
+            on_epoch=True,
+        )
 
         halted_at = halted_at.float()
         self.log("halted_at/mean/train", halted_at.mean(), on_step=True, on_epoch=True)
@@ -466,6 +472,12 @@ class PonderNet(LightningModule):
             on_step=True,
             on_epoch=True,
         )
+        self.log(
+            "beta_std/all/val",
+            calculate_beta_std(alphas, betas).mean(),
+            on_step=True,
+            on_epoch=True,
+        )
 
         halted_at = halted_at.float()
         self.log("halted_at/mean/val", halted_at.mean(), on_step=True, on_epoch=True)
@@ -528,6 +540,12 @@ class PonderNet(LightningModule):
         self.log(
             "beta_std/last/test",
             calculate_beta_std(alphas[-1], betas[-1]).mean(),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log(
+            "beta_std/all/test",
+            calculate_beta_std(alphas, betas).mean(),
             on_step=True,
             on_epoch=True,
         )
