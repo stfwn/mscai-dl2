@@ -31,7 +31,13 @@ class PonderLoss(nn.Module):
         self.register_buffer("log_prior", prior.log())
 
     def forward(
-        self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor, **kwargs
+        self,
+        preds: Tensor,
+        p: Tensor,
+        halted_at: Tensor,
+        targets: Tensor,
+        regularization_warmup_factor: float,
+        **kwargs
     ):
         """
         Args:
@@ -41,7 +47,8 @@ class PonderLoss(nn.Module):
             `halted_at`: Indices of steps where each sample actually stopped of
                 shape (batch)
             `targets`: Targets of shape (batch_size)
-
+            `regularization_warmup_factor`: Factor used to warm up
+                regularization loss term.
         """
         n_steps, batch_size, _ = preds.shape
 
@@ -59,7 +66,7 @@ class PonderLoss(nn.Module):
         p_t = p.transpose(1, 0)
         l_reg = self.KL(self.log_prior[:n_steps].expand_as(p_t), p_t)
 
-        return l_rec, self.scale_reg * l_reg
+        return l_rec, regularization_warmup_factor * self.scale_reg * l_reg
 
 
 class PonderBayesianLoss(nn.Module):
@@ -79,7 +86,13 @@ class PonderBayesianLoss(nn.Module):
         self.prior = dist_beta.Beta(beta_prior[0], beta_prior[1])
 
     def forward(
-        self, preds: Tensor, p: Tensor, halted_at: Tensor, targets: Tensor, **kwargs
+        self,
+        preds: Tensor,
+        p: Tensor,
+        halted_at: Tensor,
+        targets: Tensor,
+        regularization_warmup_factor: float,
+        **kwargs
     ):
         """
         Args:
@@ -90,6 +103,8 @@ class PonderBayesianLoss(nn.Module):
                 shape (batch)
             `targets`: Targets of shape (batch_size)
             'lambdas': Lambdas of shape (step, batch_size)
+            `regularization_warmup_factor`: Factor used to warm up
+                regularization loss term.
         """
         assert "lambdas" in kwargs, "Must provide lambdas!"
 
@@ -112,9 +127,11 @@ class PonderBayesianLoss(nn.Module):
 
         # Regularization term
         # TODO : Make hyperparameter to decide if you want to use approximation
-        # l_reg = (
+        # l_reg_alt = (
         #     self.KL(
-        #         self.prior.rsample(sample_shape=(batch_size, n_steps)).to(lambdas.device).log(),
+        #         self.prior.rsample(sample_shape=(batch_size, n_steps))
+        #         .to(lambdas.device)
+        #         .log(),
         #         lambdas.transpose(1, 0),  # type: ignore
         #     )
         #     .sum(1)
@@ -128,7 +145,6 @@ class PonderBayesianLoss(nn.Module):
 
         a_prime, b_prime = torch.Tensor(self.beta_prior).to(lambdas.device)
         a, b = alphas, betas
-
         # Analytically computing KL-divergence, according to formula in
         # https://en.wikipedia.org/wiki/Beta_distribution#:~:text=The%20relative%20entropy%2C%20or%20Kullback%E2%80%93Leibler%20divergence%20DKL(X1%20%7C%7C%20X2)
         l_reg = (
@@ -143,4 +159,4 @@ class PonderBayesianLoss(nn.Module):
             .mean()
         )
 
-        return l_rec, self.scale_reg * l_reg
+        return l_rec, regularization_warmup_factor * self.scale_reg * l_reg

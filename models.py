@@ -135,6 +135,9 @@ class PonderNet(LightningModule):
                 "Using a fixed number of ponder steps with a non-zero KL multiplier (`scale_reg`) does not make sense."
             )
 
+        # Default so that this model can be used without regularization warmup.
+        self.regularization_warmup_factor = 1
+
     def configure_optimizers(self):
         optimizer = self.optimizer_class(
             params=self.parameters(), lr=self.hparams.learning_rate
@@ -338,7 +341,13 @@ class PonderNet(LightningModule):
         x, targets = batch
         preds, p, halted_at, lambdas, (alphas, betas) = self(x)
         rec_loss, reg_loss = self.loss_function(
-            preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas)
+            preds,
+            p,
+            halted_at,
+            targets,
+            lambdas=lambdas,
+            beta_params=(alphas, betas),
+            regularization_warmup_factor=self.regularization_warmup_factor,
         )
         loss = rec_loss + reg_loss
         self.log("loss/rec_train", rec_loss)
@@ -414,7 +423,13 @@ class PonderNet(LightningModule):
         x, targets = batch
         preds, p, halted_at, lambdas, (alphas, betas) = self(x)
         rec_loss, reg_loss = self.loss_function(
-            preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas)
+            preds,
+            p,
+            halted_at,
+            targets,
+            lambdas=lambdas,
+            beta_params=(alphas, betas),
+            regularization_warmup_factor=self.regularization_warmup_factor,
         )
         loss = rec_loss + reg_loss
         self.log("loss/rec_val", rec_loss)
@@ -491,7 +506,13 @@ class PonderNet(LightningModule):
         x, targets = batch
         preds, p, halted_at, lambdas, (alphas, betas) = self(x)
         rec_loss, reg_loss = self.loss_function(
-            preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas)
+            preds,
+            p,
+            halted_at,
+            targets,
+            lambdas=lambdas,
+            beta_params=(alphas, betas),
+            regularization_warmup_factor=self.regularization_warmup_factor,
         )
         loss = rec_loss + reg_loss
         self.log("loss/rec_test", rec_loss)
