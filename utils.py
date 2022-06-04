@@ -36,7 +36,7 @@ class RegularizationWarmup(Callback):
                 when the factor dips below 1. If this value is in [0, 1] the
                 slope should be > 1 and warmup stops when the factor exceeds 1.
             slope: increment the warmup factor by this value at the end of
-                every epoch. Can be positive or negative.
+                every epoch. Can be between 0 and 1 or greater than 1.
             model_attr: name of the property on the pl_module that is being
                 trained that the warmup factor should be saved to at the start
                 of every epoch.
