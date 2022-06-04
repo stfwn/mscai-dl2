@@ -70,11 +70,11 @@ def main():
                 mode="max",
             ),
             LearningRateMonitor(logging_interval="epoch"),
-            utils.RegularizationWarmup(
-                start=1e-8,
-                slope=10,
-                model_attr="regularization_warmup_factor",
-            ),
+            # utils.RegularizationWarmup(
+            #     start=1e-8,
+            #     slope=10,
+            #     model_attr="regularization_warmup_factor",
+            # ),
         ],
         deterministic=True,
         devices="auto",
