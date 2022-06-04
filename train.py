@@ -63,7 +63,7 @@ def main():
     trainer = pl.Trainer(
         accelerator="auto",
         callbacks=[
-            EarlyStopping(monitor="loss/val", patience=5),
+            EarlyStopping(monitor="loss/val", patience=10),
             ModelCheckpoint(
                 save_top_k=1,
                 monitor="acc/val",
