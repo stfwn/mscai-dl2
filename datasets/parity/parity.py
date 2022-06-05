@@ -4,6 +4,7 @@ from typing import Tuple
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
+from itertools import cycle
 
 
 class ParityDataset(Dataset):
@@ -26,6 +27,7 @@ def generate_parity_data(
     num_problems: int,
     min_integer_change: int = None,
     max_integer_change: int = None,
+    uniform: bool = False,
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     """
     Generates a dataset of parity problems.
@@ -44,11 +46,13 @@ def generate_parity_data(
     problems = torch.zeros((num_problems, vector_size))
     labels = torch.zeros(num_problems, dtype=torch.int64)
 
+    num_integer_change = cycle(range(min_integer_change, max_integer_change + 1))
     for index, problem in enumerate(problems):
         # Sample which indices should be changed from 0 to -1 or 1.
+        num_changes = next(num_integer_change) if uniform else np.random.randint(min_integer_change, max_integer_change + 1)
         change_indices = np.random.choice(
             np.arange(vector_size),
-            size=np.random.randint(min_integer_change, max_integer_change + 1),
+            size=num_changes,
             replace=False,
         )
         # Change the indices to -1 or 1.
@@ -67,6 +71,7 @@ def save_parity_data(
     num_problems: tuple[int, int, int],
     path: str,
     extrapolate: bool = False,
+    uniform: bool = False,
 ):
     """
     Saves the parity problems and labels to a file; for the train, valid and test dataset respectively.
@@ -77,18 +82,18 @@ def save_parity_data(
     """
     if extrapolate:
         train_data = generate_parity_data(
-            vector_size, num_problems[0], 1, vector_size // 2
+            vector_size, num_problems[0], 1, vector_size // 2, uniform=uniform
         )
         valid_data = generate_parity_data(
-            vector_size, num_problems[1], 1, vector_size // 2
+            vector_size, num_problems[1], 1, vector_size // 2, uniform=uniform
         )
         test_data = generate_parity_data(
-            vector_size, num_problems[2], vector_size // 2 + 1, vector_size
+            vector_size, num_problems[2], vector_size // 2 + 1, vector_size, uniform=uniform
         )
     else:
-        train_data = generate_parity_data(vector_size, num_problems[0])
-        valid_data = generate_parity_data(vector_size, num_problems[1])
-        test_data = generate_parity_data(vector_size, num_problems[2])
+        train_data = generate_parity_data(vector_size, num_problems[0], uniform=uniform)
+        valid_data = generate_parity_data(vector_size, num_problems[1], uniform=uniform)
+        test_data = generate_parity_data(vector_size, num_problems[2], uniform=uniform)
 
     problem_str = f"{vector_size}{'_extrapolate' if extrapolate else ''}"
 
