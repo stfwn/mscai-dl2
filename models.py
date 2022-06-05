@@ -665,9 +665,9 @@ class PonderSequentialRNN(nn.Module):
         x = x.unsqueeze(-1)
 
         _, state = self.rnn(x, state)
-        state = F.relu(state)
-        # LSTM state == (c_n, h_n)
+        # LSTM returns (c_n, h_n)
         projection_state = state if self.rnn_type != "lstm" else state[1]
+        projection_state = torch.tanh(projection_state)
         y_hat_n, lambda_n = self.projection(projection_state.squeeze(0)).tensor_split(
             indices=(self.out_dim,),
             dim=1,
@@ -708,14 +708,12 @@ class PonderRNN(nn.Module):
         batch_size = x.size(0)
         x = x.view(batch_size, -1)
 
-        if self.rnn_type == "lstm":
-            # LSTM returns `(c_n, h_n)`
-            state = F.relu(self.rnn(x, state)[1])
-        else:
-            # RNN and GRU return `h_n`
-            state = F.relu(self.rnn(x, state))
+        state = self.rnn(x, state)
+        # LSTM returns (c_n, h_n)
+        projection_state = state if self.rnn_type != "lstm" else state[1]
+        projection_state = torch.tanh(projection_state)
 
-        y_hat_n, lambda_n = self.projection(state).tensor_split(
+        y_hat_n, lambda_n = self.projection(projection_state).tensor_split(
             indices=(self.out_dim,),
             dim=1,
         )
@@ -755,14 +753,12 @@ class PonderBayesianRNN(nn.Module):
         batch_size = x.size(0)
         x = x.view(batch_size, -1)
 
-        if self.rnn_type == "lstm":
-            # LSTM returns `(c_n, h_n)`
-            state = F.relu(self.rnn(x, state)[1])
-        else:
-            # RNN and GRU return `h_n`
-            state = F.relu(self.rnn(x, state))
+        state = self.rnn(x, state)
+        # LSTM returns (c_n, h_n)
+        projection_state = state if self.rnn_type != "lstm" else state[1]
+        projection_state = torch.tanh(projection_state)
 
-        y_hat_n, lambda_params = self.projection(state).tensor_split(
+        y_hat_n, lambda_params = self.projection(projection_state).tensor_split(
             indices=(self.out_dim,),
             dim=1,
         )
