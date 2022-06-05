@@ -57,7 +57,7 @@ def generate_parity_data(
         )
 
         # The label is 0 if the number of 1s is even, otherwise it is 1.
-        labels[index] = (problem == 1).sum() % 2
+        labels[index] = problem.sum() % 2
 
     return problems, labels
 
