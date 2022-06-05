@@ -1,10 +1,10 @@
 import os
+from itertools import cycle
 from typing import Tuple
 
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
-from itertools import cycle
 
 
 class ParityDataset(Dataset):
@@ -49,7 +49,11 @@ def generate_parity_data(
     num_integer_change = cycle(range(min_integer_change, max_integer_change + 1))
     for index, problem in enumerate(problems):
         # Sample which indices should be changed from 0 to -1 or 1.
-        num_changes = next(num_integer_change) if uniform else np.random.randint(min_integer_change, max_integer_change + 1)
+        num_changes = (
+            next(num_integer_change)
+            if uniform
+            else np.random.randint(min_integer_change, max_integer_change + 1)
+        )
         change_indices = np.random.choice(
             np.arange(vector_size),
             size=num_changes,
@@ -88,7 +92,11 @@ def save_parity_data(
             vector_size, num_problems[1], 1, vector_size // 2, uniform=uniform
         )
         test_data = generate_parity_data(
-            vector_size, num_problems[2], vector_size // 2 + 1, vector_size, uniform=uniform
+            vector_size,
+            num_problems[2],
+            vector_size // 2 + 1,
+            vector_size,
+            uniform=uniform,
         )
     else:
         train_data = generate_parity_data(vector_size, num_problems[0], uniform=uniform)

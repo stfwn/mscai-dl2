@@ -3,6 +3,7 @@ import os
 
 # third party
 import pytorch_lightning as pl
+import torch
 from pytorch_lightning.callbacks import (
     EarlyStopping,
     LearningRateMonitor,
@@ -10,7 +11,6 @@ from pytorch_lightning.callbacks import (
 )
 from pytorch_lightning.loggers import TensorBoardLogger, WandbLogger
 from pytorch_lightning.utilities import seed
-import torch
 
 # first party
 import datamodules
