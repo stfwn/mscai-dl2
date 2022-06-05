@@ -19,6 +19,7 @@ class ParityDatamodule(pl.LightningDataModule):
         shuffle: bool = True,
         pin_memory: bool = True,
         drop_last: bool = False,
+        uniform: bool = False,
         *args,
         **kwargs,
     ):
@@ -31,6 +32,7 @@ class ParityDatamodule(pl.LightningDataModule):
         self.num_classes = 2
         self.dims = vector_size
         self.problem_str = f"{vector_size}{'_extrapolate' if extrapolate else ''}"
+        self.uniform = uniform
 
     def prepare_data(self):
         save_parity_data(
@@ -38,6 +40,7 @@ class ParityDatamodule(pl.LightningDataModule):
             num_problems=self.num_problems,
             path=self.path,
             extrapolate=self.extrapolate,
+            uniform=self.uniform,
         )
 
     def setup(self, stage=None):

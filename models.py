@@ -312,8 +312,8 @@ class PonderNet(LightningModule):
             ] = n
             if (
                 self.allow_early_return
-                and halted_at.all()
                 and not self.hparams.fixed_ponder_steps
+                and halted_at.all()
             ):
                 break
 

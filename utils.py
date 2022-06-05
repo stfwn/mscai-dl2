@@ -1,5 +1,5 @@
-from pytorch_lightning.callbacks import Callback
 import torch
+from pytorch_lightning.callbacks import Callback
 
 
 def calculate_beta_std(alphas: torch.Tensor, betas: torch.Tensor) -> torch.Tensor:
