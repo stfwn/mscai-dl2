@@ -17,6 +17,7 @@ from utils import calculate_beta_std, mode_agreement_metric
 class PonderNet(LightningModule):
     def __init__(
         self,
+        *,
         step_function: Literal["mlp", "rnn", "seq_rnn", "bay_mlp", "bay_rnn"],
         step_function_args: dict,
         task: Literal["classification"],
@@ -594,6 +595,156 @@ class PonderNet(LightningModule):
         return out
 
 
+class RegularNet(LightningModule):
+    def __init__(
+        self,
+        *,
+        step_function: Literal["mlp", "rnn"],
+        step_function_args: dict,
+        task: Literal["classification"],
+        encoder: Optional[Literal["efficientnet"]] = None,
+        encoder_args: Optional[dict] = None,
+        learning_rate: float = 3e-4,
+        fixed_ponder_steps: int = 1,
+        **kwargs,  # Just to log them.
+    ):
+        super().__init__()
+        self.save_hyperparameters()
+
+        assert (
+            fixed_ponder_steps > 0
+        ), "Fixed number of ponder steps has to be > 0 in RegularNet"
+
+        # Metrics
+        self.train_acc = torchmetrics.Accuracy()
+        self.val_acc = torchmetrics.Accuracy()
+        self.test_acc = torchmetrics.Accuracy()
+
+        # Encoder
+        if encoder:
+            encoder_class = {
+                "efficientnet": EfficientNetEncoder,
+            }.get(encoder)
+            if not encoder_class:
+                raise ValueError(f"Unknown encoder: '{encoder}'")
+            self.encoder = encoder_class(**encoder_args)
+        else:
+            self.encoder = lambda x: x  # type: ignore
+
+        # Step function
+        sf_class = {
+            "mlp": RegularMLP,
+            "rnn": RegularRNN,
+        }.get(step_function)
+        if not sf_class:
+            raise ValueError(f"Unknown step function: '{step_function}'")
+        self.step_function = sf_class(**step_function_args)
+
+        # Loss
+        lf_class = {
+            "classification": F.cross_entropy,
+        }.get(task)
+        if not lf_class:
+            raise NotImplementedError(f"Unknown task: '{task}'")
+        self.loss_function = lf_class
+
+        # Optimizer
+        self.optimizer_class = optim.Adam
+
+        # Default so that this model can be used without regularization warmup.
+        self.regularization_warmup_factor = 1
+
+    def configure_optimizers(self):
+        return PonderNet.configure_optimizers(self)
+
+    def forward(self, x):
+        state = None  # State that transfers across steps
+        x = self.encoder(x)
+
+        for _ in range(self.hparams.fixed_ponder_steps):
+            y_hat, state = self.step_function(x, state)
+
+        return y_hat  # (batch, logit)
+
+    def training_step(self, batch, batch_idx):
+        x, targets = batch
+        preds = self(x)
+        loss = self.loss_function(preds, targets)
+
+        self.train_acc(preds, targets)
+        self.log("acc/train", self.train_acc, on_step=False, on_epoch=True)
+        self.log("loss/train", loss)
+
+        self.log(
+            "halted_at/mean/train",
+            float(self.hparams.fixed_ponder_steps),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log("halted_at/std/train", 0.0, on_step=True, on_epoch=True)
+        self.log(
+            "halted_at/median/train",
+            float(self.hparams.fixed_ponder_steps),
+            on_step=True,
+            on_epoch=True,
+        )
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        x, targets = batch
+        preds = self(x)
+        loss = self.loss_function(preds, targets)
+
+        self.val_acc(preds, targets)
+        self.log("loss/val", loss)
+        self.log("acc/val", self.val_acc, on_step=False, on_epoch=True)
+
+        self.log(
+            "halted_at/mean/val",
+            float(self.hparams.fixed_ponder_steps),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log("halted_at/std/val", 0.0, on_step=True, on_epoch=True)
+        self.log(
+            "halted_at/median/val",
+            float(self.hparams.fixed_ponder_steps),
+            on_step=True,
+            on_epoch=True,
+        )
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        x, targets = batch
+        preds = self(x)
+        loss = self.loss_function(preds, targets)
+
+        self.test_acc(preds, targets)
+        self.log("loss/test", loss)
+        self.log("acc/test", self.test_acc, on_step=False, on_epoch=True)
+
+        self.log(
+            "halted_at/mean/test",
+            float(self.hparams.fixed_ponder_steps),
+            on_step=True,
+            on_epoch=True,
+        )
+        self.log("halted_at/std/test", 0.0, on_step=True, on_epoch=True)
+        self.log(
+            "halted_at/median/test",
+            float(self.hparams.fixed_ponder_steps),
+            on_step=True,
+            on_epoch=True,
+        )
+        return loss
+
+    def on_test_epoch_start(self) -> None:
+        return PonderNet.on_test_epoch_start(self)
+
+    def on_test_epoch_end(self) -> None:
+        return PonderNet.on_test_epoch_end(self)
+
+
 class PonderMLP(nn.Module):
     def __init__(
         self, in_dim: int, hidden_dims: list[int], out_dim: int, state_dim: int
@@ -648,7 +799,6 @@ class PonderSequentialRNN(nn.Module):
         rnn_cls = {
             "rnn": nn.RNN,
             "gru": nn.GRU,
-            "lstm": nn.LSTM,
         }[self.rnn_type]
 
         self.rnn = rnn_cls(
@@ -665,10 +815,9 @@ class PonderSequentialRNN(nn.Module):
         x = x.unsqueeze(-1)
 
         _, state = self.rnn(x, state)
-        # LSTM returns (c_n, h_n)
-        projection_state = state if self.rnn_type != "lstm" else state[1]
-        projection_state = torch.tanh(projection_state)
-        y_hat_n, lambda_n = self.projection(projection_state.squeeze(0)).tensor_split(
+        state = torch.tanh(state)
+
+        y_hat_n, lambda_n = self.projection(state.squeeze(0)).tensor_split(
             indices=(self.out_dim,),
             dim=1,
         )
@@ -680,7 +829,12 @@ class PonderSequentialRNN(nn.Module):
 
 class PonderRNN(nn.Module):
     def __init__(
-        self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
+        self,
+        in_dim: int,
+        out_dim: int,
+        state_dim: int,
+        rnn_type: str = "rnn",
+        activation: str = "tanh",
     ):
         super().__init__()
         self.out_dim = out_dim
@@ -689,10 +843,14 @@ class PonderRNN(nn.Module):
 
         total_out_dim = out_dim + 1
 
+        self.activation = {
+            "relu": torch.relu,
+            "tanh": torch.tanh,
+        }[activation]
+
         rnn_cls = {
             "rnn": nn.RNNCell,
             "gru": nn.GRUCell,
-            "lstm": nn.LSTMCell,
         }[self.rnn_type]
 
         self.rnn = rnn_cls(
@@ -709,11 +867,9 @@ class PonderRNN(nn.Module):
         x = x.view(batch_size, -1)
 
         state = self.rnn(x, state)
-        # LSTM returns (c_n, h_n)
-        projection_state = state if self.rnn_type != "lstm" else state[1]
-        projection_state = torch.tanh(projection_state)
+        state = self.activation(state)
 
-        y_hat_n, lambda_n = self.projection(projection_state).tensor_split(
+        y_hat_n, lambda_n = self.projection(state).tensor_split(
             indices=(self.out_dim,),
             dim=1,
         )
@@ -725,7 +881,12 @@ class PonderRNN(nn.Module):
 
 class PonderBayesianRNN(nn.Module):
     def __init__(
-        self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
+        self,
+        in_dim: int,
+        out_dim: int,
+        state_dim: int,
+        rnn_type: str = "rnn",
+        activation: str = "tanh",
     ):
         super().__init__()
         self.out_dim = out_dim
@@ -734,10 +895,14 @@ class PonderBayesianRNN(nn.Module):
 
         total_out_dim = out_dim + 2
 
+        self.activation = {
+            "relu": torch.relu,
+            "tanh": torch.tanh,
+        }[activation]
+
         rnn_cls = {
             "rnn": nn.RNNCell,
             "gru": nn.GRUCell,
-            "lstm": nn.LSTMCell,
         }[self.rnn_type]
 
         self.rnn = rnn_cls(
@@ -754,11 +919,9 @@ class PonderBayesianRNN(nn.Module):
         x = x.view(batch_size, -1)
 
         state = self.rnn(x, state)
-        # LSTM returns (c_n, h_n)
-        projection_state = state if self.rnn_type != "lstm" else state[1]
-        projection_state = torch.tanh(projection_state)
+        state = self.activation(state)
 
-        y_hat_n, lambda_params = self.projection(projection_state).tensor_split(
+        y_hat_n, lambda_params = self.projection(state).tensor_split(
             indices=(self.out_dim,),
             dim=1,
         )
@@ -839,3 +1002,78 @@ class EfficientNetEncoder(nn.Module):
 
     def forward(self, x):
         return self.model(x)
+
+
+class RegularMLP(nn.Module):
+    def __init__(self, in_dim: int, hidden_dims: list[int], out_dim: int):
+        super().__init__()
+        self.in_dim = in_dim
+        self.hidden_dims = hidden_dims
+        self.out_dim = out_dim
+
+        dims = [in_dim] + hidden_dims + [out_dim]
+        layers = [nn.Linear(dims[0], dims[1])]
+        for in_, out_ in zip(dims[1:], dims[2:]):
+            layers.append(nn.ReLU())
+            layers.append(nn.Linear(in_, out_))
+        self.layers = nn.Sequential(*layers)
+
+    def forward(self, x, state=None):
+        batch_size = x.size(0)
+        x = x.view(batch_size, -1)
+
+        if state is None:
+            # Create initial state
+            state = x.new_zeros(batch_size, self.state_dim)
+
+        y_hat, state = self.layers(torch.concat((x, state), dim=1)).tensor_split(
+            indices=(self.out_dim,),
+            dim=1,
+        )
+
+        return y_hat, state
+
+
+class RegularRNN(nn.Module):
+    def __init__(
+        self,
+        in_dim: int,
+        out_dim: int,
+        state_dim: int,
+        rnn_type: str = "rnn",
+        activation: str = "relu",
+    ):
+        super().__init__()
+        self.out_dim = out_dim
+        self.state_dim = state_dim
+        self.rnn_type = rnn_type.lower()
+
+        self.activation = {
+            "relu": torch.relu,
+            "tanh": torch.tanh,
+        }[activation]
+
+        rnn_cls = {
+            "rnn": nn.RNNCell,
+            "gru": nn.GRUCell,
+        }[self.rnn_type]
+
+        self.rnn = rnn_cls(
+            input_size=in_dim,
+            hidden_size=state_dim,
+        )
+        self.projection = nn.Linear(
+            in_features=state_dim,
+            out_features=out_dim,
+        )
+
+    def forward(self, x, state=None):
+        batch_size = x.size(0)
+        x = x.view(batch_size, -1)
+
+        state = self.rnn(x, state)
+        state = self.activation(state)
+
+        y_hat = self.projection(state)
+
+        return y_hat, state
