@@ -19,10 +19,10 @@ The setup required to generate or gather data is done at runtime.
 
 ## Usage
 
-> **Important**
-> **TL;DR: Copy files from `train-presets` to the root directory of this
-> repository to reproduce the experiments from our report.** Read on to
-> understand the configuration options.
+- **TL;DR: Copy files from `train-presets` to the root directory of this
+  repository to reproduce the experiments from our report.**
+
+Read on to understand the configuration options.
 
 Many projects use a command-line arguments to configure and run experiments.
 Our project uses a `train.py` file in the root of the repository to configure
