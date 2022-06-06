@@ -15,7 +15,7 @@ def test_parity_normal():
     for dl in [dm.train_dataloader(), dm.val_dataloader(), dm.test_dataloader()]:
         for x, y in dl:
             assert x.size(-1) == x_dim
-            assert (y == ((x == 1).sum(dim=-1) % 2)).all()
+            assert (y == ((x != 0).sum(dim=-1) % 2)).all()
 
 
 def test_parity_extrapolate():
@@ -33,9 +33,9 @@ def test_parity_extrapolate():
         for x, y in dl:
             assert x.size(-1) == x_dim
             assert ((x != 0).sum(dim=-1) <= (x_dim // 2)).all()
-            assert (y == ((x == 1).sum(dim=-1) % 2)).all()
+            assert (y == ((x != 0).sum(dim=-1) % 2)).all()
 
     for x, y in dm.test_dataloader():
         assert x.size(-1) == x_dim
         assert ((x != 0).sum(dim=-1) > x_dim // 2).all()
-        assert (y == ((x == 1).sum(dim=-1) % 2)).all()
+        assert (y == ((x != 0).sum(dim=-1) % 2)).all()
