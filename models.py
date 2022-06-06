@@ -19,6 +19,11 @@ from utils import calculate_beta_std, mode_agreement_metric
 
 
 class PonderNet(LightningModule):
+    """Main class for doing experiments with PonderNets of different types. It
+    takes options to configure the step function, maximum number of ponder
+    steps, prediction reduction method, etc. For baselines where the number of
+    ponder steps is a hyperparameter, see the RegularNet class."""
+
     def __init__(
         self,
         *,
@@ -41,6 +46,12 @@ class PonderNet(LightningModule):
     ):
         """
         Args:
+            step_function: Which step function to use.
+            step_function_args: Arguments to pass to the step function module.
+            task: Which task to perform (originally intended to support
+                regression).
+            max_ponder_steps: Hard limit to the number of ponder steps.
+                Bayesian step functions always compute up to this step.
             preds_reduction_method: Method by which the predictions at each
                 step are reduced to a final prediction.
 
@@ -49,9 +60,21 @@ class PonderNet(LightningModule):
                   cumulative probability of stopping was > 1 - epsilon (true to
                   the paper).
                 - `bayesian`: use the weighted average of the predictions at
-                  every step, where the weights are decided by the geometric
-                  prior, parameterized as in the loss.
-
+                  every step, where the weights are decided by the probability
+                  of reaching a particular step and then stopping there.
+                - `bayesian_sampling`: same as bayesian but with sampling. See
+                  paper.
+            encoder: Name of the encoder to use.
+            encoder_args: Arguments to pass to the encoder module.
+            learning_rate: Learning rate to use during training.
+            lambda_prior: Prior to parameterize the geometric prior
+                distribution. (Only used if step function is not bayesian)
+            beta_prior: Prior to parameterize the beta prior
+                distribution. (Only used if the step function is bayesian)
+            scale_reg: Scalar to scale the KL term in the loss.
+            ponder_epsilon: Pondering halts when the cumulative probability of
+                having stopped exceeds 1-epsilon. (Only used if the preds
+                reduction method is ponder)
             fixed_ponder_steps: One-indexed int to set an exact number of steps
                 that the network should ponder for. This overrides halting
                 probabilities and max ponder steps. It's useful for configuring
@@ -599,6 +622,10 @@ class PonderNet(LightningModule):
 
 
 class RegularNet(LightningModule):
+    """Network to configure baselines of the same size as a PonderNet, but
+    with a more efficient compute graph because the number of steps is
+    a hyperparameter and thus deterministic."""
+
     def __init__(
         self,
         *,
@@ -611,6 +638,18 @@ class RegularNet(LightningModule):
         fixed_ponder_steps: int = 1,
         **kwargs,  # Just to log them.
     ):
+        """
+        Args:
+            step_function: Which step function to use.
+            step_function_args: Arguments to pass to the step function module.
+            task: Which task to perform (originally intended to support
+                regression).
+            encoder: Name of the encoder to use.
+            encoder_args: Arguments to pass to the encoder module.
+            learning_rate: Learning rate to use during training.
+            fixed_ponder_steps: Loop over the step function for this number of
+                steps. Always used in this RegularNet.
+        """
         super().__init__()
         self.save_hyperparameters()
 
