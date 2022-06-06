@@ -18,7 +18,7 @@ class PonderNet(LightningModule):
     def __init__(
         self,
         *,
-        step_function: Literal["mlp", "rnn", "seq_rnn", "bay_mlp", "bay_rnn"],
+        step_function: Literal["mlp", "rnn", "bay_mlp", "bay_rnn"],
         step_function_args: dict,
         task: Literal["classification"],
         max_ponder_steps: int,
@@ -82,7 +82,6 @@ class PonderNet(LightningModule):
         sf_class = {
             "mlp": PonderMLP,
             "rnn": PonderRNN,
-            "seq_rnn": PonderSequentialRNN,
             "bay_mlp": PonderBayesianMLP,
             "bay_rnn": PonderBayesianRNN,
         }.get(step_function)
@@ -785,48 +784,6 @@ class PonderMLP(nn.Module):
                 self.out_dim,
                 self.out_dim + self.state_dim,
             ),
-            dim=1,
-        )
-
-        lambda_n = lambda_n.squeeze().sigmoid()
-
-        return y_hat_n, state, lambda_n, (torch.tensor(0), torch.tensor(0))
-
-
-class PonderSequentialRNN(nn.Module):
-    def __init__(
-        self, in_dim: int, out_dim: int, state_dim: int, rnn_type: str = "rnn"
-    ):
-        super().__init__()
-        self.out_dim = out_dim
-        self.state_dim = state_dim
-        self.rnn_type = rnn_type.lower()
-
-        total_out_dim = out_dim + 1
-
-        rnn_cls = {
-            "rnn": nn.RNN,
-            "gru": nn.GRU,
-        }[self.rnn_type]
-
-        self.rnn = rnn_cls(
-            input_size=in_dim,
-            hidden_size=state_dim,
-            batch_first=True,
-        )
-        self.projection = nn.Linear(
-            in_features=state_dim,
-            out_features=total_out_dim,
-        )
-
-    def forward(self, x, state=None):
-        x = x.unsqueeze(-1)
-
-        _, state = self.rnn(x, state)
-        state = torch.tanh(state)
-
-        y_hat_n, lambda_n = self.projection(state.squeeze(0)).tensor_split(
-            indices=(self.out_dim,),
             dim=1,
         )
 
