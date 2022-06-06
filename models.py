@@ -169,10 +169,7 @@ class PonderNet(LightningModule):
         optimizer = self.optimizer_class(
             params=self.parameters(), lr=self.hparams.learning_rate
         )
-        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode="min", patience=3, factor=0.1
-        )
-        return [optimizer], [{"scheduler": scheduler, "monitor": "loss/val"}]
+        return optimizer
 
     def reduce_preds(self, preds, halted_at, p, beta_params):
         """
