@@ -5,7 +5,6 @@ import os
 import pytorch_lightning as pl
 import torch
 from pytorch_lightning.callbacks import (
-    EarlyStopping,
     LearningRateMonitor,
     ModelCheckpoint,
 )
@@ -18,7 +17,7 @@ import utils
 
 
 def main():
-    seed = 420
+    seed = 421
     pl.seed_everything(seed)
     datamodule = datamodules.ParityDatamodule(
         path="./data/parity/",
@@ -30,25 +29,24 @@ def main():
         uniform=False,
     )
     model = models.PonderNet(
-        step_function="bay_rnn",
+        step_function="rnn",
         step_function_args=dict(
-            in_dim=int(torch.tensor(datamodule.dims).prod()),
+            in_dim=torch.tensor(datamodule.dims).prod().item(),
             out_dim=datamodule.num_classes,
             state_dim=128,
             rnn_type="gru",
+            activation="tanh",
         ),
-        beta_prior=(3, 3),
-        max_ponder_steps=10,
-        preds_reduction_method="bayesian_sampling",
+        preds_reduction_method="ponder",
         task="classification",
+        max_ponder_steps=10,
         learning_rate=3e-4,
         scale_reg=0.01,
         ponder_epsilon=0.05,
         # Extra args just to log them
         dataset=type(datamodule).__name__,
         seed=seed,
-        regularization_warmup=True,
-        regularization_warmup_args=dict(start=1e-6, slope=2),
+        regularization_warmup=False,
     )
 
     trainer = pl.Trainer(
@@ -60,11 +58,6 @@ def main():
                 mode="max",
             ),
             LearningRateMonitor(logging_interval="epoch"),
-            utils.RegularizationWarmup(
-                start=1e-6,
-                slope=2,
-                model_attr="regularization_warmup_factor",
-            ),
         ],
         deterministic=True,
         devices="auto",
@@ -74,7 +67,7 @@ def main():
                 default_hp_metric=True,
             ),
             WandbLogger(
-                name="Bayesian PonderNet",
+                name="PonderNet",
                 entity="mscai-dl2",
                 project="mscai-dl2",
                 log_model=True,

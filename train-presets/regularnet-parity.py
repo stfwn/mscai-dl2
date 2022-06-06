@@ -41,7 +41,6 @@ def main():
             activation="tanh",
         ),
         fixed_ponder_steps=5,
-        # lambda_prior=1 / 5,
         # Extra args just to log them
         dataset=type(datamodule).__name__,
         seed=seed,
@@ -65,7 +64,7 @@ def main():
                 default_hp_metric=True,
             ),
             WandbLogger(
-                name="Efficiency test",
+                name="RegularNet",
                 entity="mscai-dl2",
                 project="mscai-dl2",
                 log_model=True,
