@@ -13,6 +13,10 @@ from loss_functions import PonderBayesianLoss, PonderLoss
 # First party
 from utils import calculate_beta_std, mode_agreement_metric
 
+####################
+# LightningModules #
+####################
+
 
 class PonderNet(LightningModule):
     def __init__(
@@ -752,6 +756,11 @@ class RegularNet(LightningModule):
         return out
 
 
+############################
+# Pondering Step Functions #
+############################
+
+
 class PonderMLP(nn.Module):
     def __init__(
         self, in_dim: int, hidden_dims: list[int], out_dim: int, state_dim: int
@@ -844,6 +853,64 @@ class PonderRNN(nn.Module):
         return y_hat_n, state, lambda_n, (torch.tensor(0), torch.tensor(0))
 
 
+#####################################
+# Bayesian Pondering Step Functions #
+#####################################
+
+
+class PonderBayesianMLP(nn.Module):
+    def __init__(
+        self,
+        in_dim: int,
+        hidden_dims: list[int],
+        out_dim: int,
+        state_dim: int,
+    ):
+        super().__init__()
+        self.in_dim = in_dim
+        self.hidden_dims = hidden_dims
+        self.out_dim = out_dim
+        self.state_dim = state_dim
+
+        total_out_dim = (
+            out_dim + state_dim + 2
+        )  # add two extra items for dimension for alpha and beta
+        if hidden_dims:
+            layers: list[nn.Module] = [nn.Linear(in_dim + state_dim, hidden_dims[0])]
+            for in_, out in zip(hidden_dims[:-1], hidden_dims[1:]):
+                layers += [nn.ReLU(), nn.Linear(in_, out)]
+            layers += [nn.ReLU(), nn.Linear(hidden_dims[-1], total_out_dim)]
+            self.layers = nn.Sequential(*layers)
+        else:
+            self.layers = nn.Sequential(nn.Linear(in_dim + state_dim, total_out_dim))
+
+    def forward(self, x, state=None):
+        batch_size = x.size(0)
+        x = x.view(batch_size, -1)
+
+        if state is None:
+            # Create initial state
+            state = x.new_zeros(batch_size, self.state_dim)
+
+        y_hat_n, state, lambda_params = self.layers(
+            torch.concat((x, state), dim=1)
+        ).tensor_split(
+            indices=(
+                self.out_dim,
+                self.out_dim + self.state_dim,
+            ),
+            dim=1,
+        )
+
+        # 2) Sample lambda_n from beta-distribution
+        lambda_params = F.relu(lambda_params) + 1e-7
+        alpha, beta = lambda_params[:, 0], lambda_params[:, 1]
+        distribution = dist_beta.Beta(alpha, beta)
+        lambda_n = distribution.rsample()
+
+        return y_hat_n, state, lambda_n, (alpha, beta)
+
+
 class PonderBayesianRNN(nn.Module):
     def __init__(
         self,
@@ -900,73 +967,9 @@ class PonderBayesianRNN(nn.Module):
         return y_hat_n, state, lambda_n, (alpha, beta)
 
 
-class PonderBayesianMLP(nn.Module):
-    def __init__(
-        self,
-        in_dim: int,
-        hidden_dims: list[int],
-        out_dim: int,
-        state_dim: int,
-    ):
-        super().__init__()
-        self.in_dim = in_dim
-        self.hidden_dims = hidden_dims
-        self.out_dim = out_dim
-        self.state_dim = state_dim
-
-        total_out_dim = (
-            out_dim + state_dim + 2
-        )  # add two extra items for dimension for alpha and beta
-        if hidden_dims:
-            layers: list[nn.Module] = [nn.Linear(in_dim + state_dim, hidden_dims[0])]
-            for in_, out in zip(hidden_dims[:-1], hidden_dims[1:]):
-                layers += [nn.ReLU(), nn.Linear(in_, out)]
-            layers += [nn.ReLU(), nn.Linear(hidden_dims[-1], total_out_dim)]
-            self.layers = nn.Sequential(*layers)
-        else:
-            self.layers = nn.Sequential(nn.Linear(in_dim + state_dim, total_out_dim))
-
-    def forward(self, x, state=None):
-        batch_size = x.size(0)
-        x = x.view(batch_size, -1)
-
-        if state is None:
-            # Create initial state
-            state = x.new_zeros(batch_size, self.state_dim)
-
-        y_hat_n, state, lambda_params = self.layers(
-            torch.concat((x, state), dim=1)
-        ).tensor_split(
-            indices=(
-                self.out_dim,
-                self.out_dim + self.state_dim,
-            ),
-            dim=1,
-        )
-
-        # 2) Sample lambda_n from beta-distribution
-        lambda_params = F.relu(lambda_params) + 1e-7
-        alpha, beta = lambda_params[:, 0], lambda_params[:, 1]
-        distribution = dist_beta.Beta(alpha, beta)
-        lambda_n = distribution.rsample()
-
-        return y_hat_n, state, lambda_n, (alpha, beta)
-
-
-class EfficientNetEncoder(nn.Module):
-    def __init__(self, variant: int):
-        assert 0 <= variant <= 7
-        super().__init__()
-        self.model = getattr(
-            torchvision.models,
-            f"efficientnet_b{variant}",
-        )(pretrained=True, stochastic_depth_prob=0)
-        self.model.classifier = nn.Identity()
-        for param in self.model.parameters():
-            param.requires_grad = False
-
-    def forward(self, x):
-        return self.model(x)
+##########################
+# Regular step functions #
+##########################
 
 
 class RegularMLP(nn.Module):
@@ -1042,3 +1045,24 @@ class RegularRNN(nn.Module):
         y_hat = self.projection(state)
 
         return y_hat, state
+
+
+############
+# Encoders #
+############
+
+
+class EfficientNetEncoder(nn.Module):
+    def __init__(self, variant: int):
+        assert 0 <= variant <= 7
+        super().__init__()
+        self.model = getattr(
+            torchvision.models,
+            f"efficientnet_b{variant}",
+        )(pretrained=True, stochastic_depth_prob=0)
+        self.model.classifier = nn.Identity()
+        for param in self.model.parameters():
+            param.requires_grad = False
+
+    def forward(self, x):
+        return self.model(x)
