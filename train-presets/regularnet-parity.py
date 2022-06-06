@@ -28,6 +28,7 @@ def main():
         uniform=False,
     )
     model = models.RegularNet(
+        task="classification",
         encoder=None,
         encoder_args=dict(
             variant=0,
