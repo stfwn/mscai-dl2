@@ -62,12 +62,13 @@ def main():
                 "logs",
                 default_hp_metric=True,
             ),
-            WandbLogger(
-                name="Bayesian PonderNet",
-                entity="mscai-dl2",
-                project="mscai-dl2",
-                log_model=True,
-            ),
+            # Uncomment to enable logging to Weights & Biases
+            # WandbLogger(
+            #     name="Bayesian PonderNet",
+            #     entity="mscai-dl2",
+            #     project="mscai-dl2",
+            #     log_model=True,
+            # ),
         ],
         max_epochs=50,
     )
