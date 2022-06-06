@@ -1,4 +1,3 @@
-# TODO: Implement argparse shizzle here.
 raise ValueError(
-    "Copy a file from the train-presets directory to overwrite this file and then run it."
+    "Overwite this file with a copy a file from the train-presets directory to reproduce one of our experiments."
 )
