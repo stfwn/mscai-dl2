@@ -1,4 +1,4 @@
-name: dl2
+name: dl2-gpu
 channels:
   - pytorch
   - conda-forge
@@ -6,7 +6,7 @@ channels:
 dependencies:
   - python==3.10.4
   - pip==22.0.4
-  - cpuonly=2.0
+  - cudatoolkit=11.3
   - pytorch==1.11.0
   - pytorch-lightning==1.6.2
   - torchmetrics==0.8.0
