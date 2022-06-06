@@ -15,34 +15,30 @@ import models
 
 
 def main():
-    seed = 420
+    seed = 421
     pl.seed_everything(seed)
     datamodule = datamodules.TinyImageNet200DataModule(
         num_workers=os.cpu_count(), batch_size=128
     )
-    model = models.PonderNet(
+    model = models.RegularNet(
+        task="classification",
         encoder="efficientnet",
         encoder_args=dict(
             variant=0,
         ),
-        step_function="bay_rnn",
+        step_function="rnn",
         step_function_args=dict(
             in_dim=1280,
             out_dim=datamodule.num_classes,
             state_dim=500,
             rnn_type="gru",
+            activation="tanh",
         ),
-        beta_prior=(3, 3),
-        max_ponder_steps=10,
-        preds_reduction_method="bayesian_sampling",
-        task="classification",
+        fixed_ponder_steps=4,
         learning_rate=3e-4,
-        scale_reg=0.01,
-        ponder_epsilon=0.05,
         # Extra args just to log them
         dataset=type(datamodule).__name__,
         seed=seed,
-        regularization_warmup=False,
     )
 
     trainer = pl.Trainer(
@@ -63,7 +59,7 @@ def main():
                 default_hp_metric=True,
             ),
             WandbLogger(
-                name="Bayesian PonderNet",
+                name="RegularNet",
                 entity="mscai-dl2",
                 project="mscai-dl2",
                 log_model=True,

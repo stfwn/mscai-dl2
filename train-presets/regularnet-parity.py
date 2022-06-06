@@ -30,9 +30,6 @@ def main():
     model = models.RegularNet(
         task="classification",
         encoder=None,
-        encoder_args=dict(
-            variant=0,
-        ),
         step_function="rnn",
         step_function_args=dict(
             in_dim=torch.tensor(datamodule.dims).prod().item(),
@@ -42,6 +39,7 @@ def main():
             activation="tanh",
         ),
         fixed_ponder_steps=5,
+        learning_rate=3e-4,
         # Extra args just to log them
         dataset=type(datamodule).__name__,
         seed=seed,
