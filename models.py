@@ -135,6 +135,9 @@ class PonderNet(LightningModule):
                 "Using a fixed number of ponder steps with a non-zero KL multiplier (`scale_reg`) does not make sense."
             )
 
+        # Default so that this model can be used without regularization warmup.
+        self.regularization_warmup_factor = 1
+
     def configure_optimizers(self):
         optimizer = self.optimizer_class(
             params=self.parameters(), lr=self.hparams.learning_rate
@@ -309,8 +312,8 @@ class PonderNet(LightningModule):
             ] = n
             if (
                 self.allow_early_return
-                and halted_at.all()
                 and not self.hparams.fixed_ponder_steps
+                and halted_at.all()
             ):
                 break
 
@@ -338,7 +341,13 @@ class PonderNet(LightningModule):
         x, targets = batch
         preds, p, halted_at, lambdas, (alphas, betas) = self(x)
         rec_loss, reg_loss = self.loss_function(
-            preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas)
+            preds,
+            p,
+            halted_at,
+            targets,
+            lambdas=lambdas,
+            beta_params=(alphas, betas),
+            regularization_warmup_factor=self.regularization_warmup_factor,
         )
         loss = rec_loss + reg_loss
         self.log("loss/rec_train", rec_loss)
@@ -414,7 +423,13 @@ class PonderNet(LightningModule):
         x, targets = batch
         preds, p, halted_at, lambdas, (alphas, betas) = self(x)
         rec_loss, reg_loss = self.loss_function(
-            preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas)
+            preds,
+            p,
+            halted_at,
+            targets,
+            lambdas=lambdas,
+            beta_params=(alphas, betas),
+            regularization_warmup_factor=self.regularization_warmup_factor,
         )
         loss = rec_loss + reg_loss
         self.log("loss/rec_val", rec_loss)
@@ -491,7 +506,13 @@ class PonderNet(LightningModule):
         x, targets = batch
         preds, p, halted_at, lambdas, (alphas, betas) = self(x)
         rec_loss, reg_loss = self.loss_function(
-            preds, p, halted_at, targets, lambdas=lambdas, beta_params=(alphas, betas)
+            preds,
+            p,
+            halted_at,
+            targets,
+            lambdas=lambdas,
+            beta_params=(alphas, betas),
+            regularization_warmup_factor=self.regularization_warmup_factor,
         )
         loss = rec_loss + reg_loss
         self.log("loss/rec_test", rec_loss)
@@ -644,9 +665,9 @@ class PonderSequentialRNN(nn.Module):
         x = x.unsqueeze(-1)
 
         _, state = self.rnn(x, state)
-        state = F.relu(state)
-        # LSTM state == (c_n, h_n)
+        # LSTM returns (c_n, h_n)
         projection_state = state if self.rnn_type != "lstm" else state[1]
+        projection_state = torch.tanh(projection_state)
         y_hat_n, lambda_n = self.projection(projection_state.squeeze(0)).tensor_split(
             indices=(self.out_dim,),
             dim=1,
@@ -687,14 +708,12 @@ class PonderRNN(nn.Module):
         batch_size = x.size(0)
         x = x.view(batch_size, -1)
 
-        if self.rnn_type == "lstm":
-            # LSTM returns `(c_n, h_n)`
-            state = F.relu(self.rnn(x, state)[1])
-        else:
-            # RNN and GRU return `h_n`
-            state = F.relu(self.rnn(x, state))
+        state = self.rnn(x, state)
+        # LSTM returns (c_n, h_n)
+        projection_state = state if self.rnn_type != "lstm" else state[1]
+        projection_state = torch.tanh(projection_state)
 
-        y_hat_n, lambda_n = self.projection(state).tensor_split(
+        y_hat_n, lambda_n = self.projection(projection_state).tensor_split(
             indices=(self.out_dim,),
             dim=1,
         )
@@ -734,14 +753,12 @@ class PonderBayesianRNN(nn.Module):
         batch_size = x.size(0)
         x = x.view(batch_size, -1)
 
-        if self.rnn_type == "lstm":
-            # LSTM returns `(c_n, h_n)`
-            state = F.relu(self.rnn(x, state)[1])
-        else:
-            # RNN and GRU return `h_n`
-            state = F.relu(self.rnn(x, state))
+        state = self.rnn(x, state)
+        # LSTM returns (c_n, h_n)
+        projection_state = state if self.rnn_type != "lstm" else state[1]
+        projection_state = torch.tanh(projection_state)
 
-        y_hat_n, lambda_params = self.projection(state).tensor_split(
+        y_hat_n, lambda_params = self.projection(projection_state).tensor_split(
             indices=(self.out_dim,),
             dim=1,
         )
