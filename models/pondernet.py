@@ -241,14 +241,6 @@ class PonderNet(LightningModule):
             p.append(prob_not_halted_so_far * lambda_n)
             prob_not_halted_so_far = prob_not_halted_so_far * (1 - lambda_n)
 
-            # TODO: do we need this??
-            # # If the probability is over epsilon we always stop.
-            # halted_at[
-            #     torch.logical_and(
-            #         (cum_p_n > (1 - self.hparams.ponder_epsilon)), (halted_at == 0)
-            #     )
-            # ] = n
-
         # 3) Sample the halted at step.
         p = torch.stack(p).to(preds.device)  # (step, sample, batch_size)
         halted_at = (
